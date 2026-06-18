@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { DashboardGrid } from "@/components/dashboard/DashboardGrid";
 
+export const dynamic = "force-dynamic";
+
 async function getOrCreateDefaultLayout() {
   let layout = await prisma.dashboardLayout.findFirst({
     where: { isDefault: true },

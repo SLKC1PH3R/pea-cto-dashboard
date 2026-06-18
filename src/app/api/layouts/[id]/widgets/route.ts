@@ -12,8 +12,8 @@ type WidgetInput = {
   config?: Record<string, unknown>;
 };
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const layoutId = params.id;
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const layoutId = (await params).id;
   const body = await req.json();
   const widgets: WidgetInput[] = body.widgets ?? [];
 
