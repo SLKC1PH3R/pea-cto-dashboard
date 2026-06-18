@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Responsive, WidthProvider, Layout } from "react-grid-layout/legacy";
+import ReactGridLayout, { WidthProvider } from "react-grid-layout";
+import type { Layout as RGLLayout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { WIDGET_CATALOG, WidgetType } from "@/types/dashboard";
 import { WidgetRenderer } from "./WidgetRenderer";
 
-const ResponsiveGridLayout = WidthProvider(Responsive);
+const ResponsiveGridLayout = WidthProvider(ReactGridLayout.Responsive);
 
 export type DashboardWidget = {
   id: string;
@@ -30,7 +31,7 @@ export function DashboardGrid({ layoutId, initialWidgets, onLayoutChange }: Dash
   const [editMode, setEditMode] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
 
-  const layout: Layout = widgets.map((w) => ({
+  const layout: RGLLayout[] = widgets.map((w) => ({
     i: w.id,
     x: w.x,
     y: w.y,
@@ -57,7 +58,7 @@ export function DashboardGrid({ layoutId, initialWidgets, onLayoutChange }: Dash
     [layoutId, onLayoutChange]
   );
 
-  function handleLayoutChange(newLayout: Layout) {
+  function handleLayoutChange(newLayout: RGLLayout[]) {
     const updated = widgets.map((w) => {
       const match = newLayout.find((l) => l.i === w.id);
       if (!match) return w;

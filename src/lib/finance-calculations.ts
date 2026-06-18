@@ -192,3 +192,38 @@ export function timeWeightedReturn(
   }
   return cumulative - 1;
 }
+
+/**
+ * Génère les dates d'exécution prévues d'un plan DCA (investissement
+ * programmé) entre sa première exécution et une date de fin (généralement
+ * "aujourd'hui"), selon sa fréquence.
+ *
+ * Utilisé pour projeter les transactions Trade Republic dont on n'a que
+ * la confirmation de création du plan, pas les confirmations d'exécution
+ * individuelles.
+ */
+export function generateDcaExecutionDates(
+  firstExecution: Date,
+  frequency: "WEEKLY" | "BIWEEKLY" | "MONTHLY",
+  until: Date = new Date()
+): Date[] {
+  const dates: Date[] = [];
+  let current = new Date(firstExecution);
+
+  const incrementDays = frequency === "WEEKLY" ? 7 : frequency === "BIWEEKLY" ? 14 : null;
+
+  while (current <= until) {
+    dates.push(new Date(current));
+
+    if (incrementDays !== null) {
+      current = new Date(current);
+      current.setDate(current.getDate() + incrementDays);
+    } else {
+      // MONTHLY
+      current = new Date(current);
+      current.setMonth(current.getMonth() + 1);
+    }
+  }
+
+  return dates;
+}

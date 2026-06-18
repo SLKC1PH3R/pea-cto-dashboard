@@ -1,0 +1,82 @@
+/**
+ * Boursorama affiche des noms commerciaux abrégés ("ISHS COR MSCI WLD",
+ * "AM.NASDQ-100 SW.UC") plutôt que des tickers exploitables par Finnhub.
+ * Cette table de correspondance permet de retrouver le bon ticker/ISIN à
+ * partir du nom partiel détecté dans le relevé.
+ *
+ * À enrichir au fil des imports : si un nom n'est pas reconnu, l'import le
+ * signale en warning et permet une résolution manuelle plutôt que de planter.
+ */
+
+export type KnownAsset = {
+  /** Fragments du nom Boursorama qui permettent d'identifier l'actif (match "contains", insensible à la casse) */
+  matchFragments: string[];
+  ticker: string;
+  isin?: string;
+  name: string;
+  assetType: "ACTION" | "ETF_DISTRIBUANT" | "ETF_CAPITALISANT";
+  sector?: string;
+  region?: string;
+  currency: string;
+  benchmarkTicker?: string;
+};
+
+export const KNOWN_ASSETS: KnownAsset[] = [
+  {
+    matchFragments: ["ISHS COR MSCI WLD", "ISHARES CORE MSCI WORLD"],
+    ticker: "IWDA.AS",
+    isin: "IE00B4L5Y983",
+    name: "iShares Core MSCI World",
+    assetType: "ETF_CAPITALISANT",
+    sector: "Diversifié",
+    region: "Monde",
+    currency: "EUR",
+  },
+  {
+    matchFragments: ["AM.NASDQ-100", "AMUNDI NASDAQ"],
+    ticker: "ANX.PA",
+    isin: "LU1681038243",
+    name: "Amundi Nasdaq-100",
+    assetType: "ETF_CAPITALISANT",
+    sector: "Technologie",
+    region: "USA",
+    currency: "EUR",
+    benchmarkTicker: "QQQ",
+  },
+  {
+    matchFragments: ["ISHS VI-ISMWSPE", "ISHARES MSCI WORLD SMALL CAP"],
+    ticker: "IUSN.DE",
+    isin: "IE00BF4RFH31",
+    name: "iShares MSCI World Small Cap",
+    assetType: "ETF_CAPITALISANT",
+    sector: "Diversifié",
+    region: "Monde",
+    currency: "EUR",
+  },
+  {
+    matchFragments: ["PHYSICAL SILVER"],
+    ticker: "PHAG.L",
+    isin: "IE00B4NCWG09",
+    name: "WisdomTree Physical Silver",
+    assetType: "ETF_CAPITALISANT",
+    sector: "Matières premières",
+    region: "Monde",
+    currency: "USD",
+  },
+];
+
+export type AssetResolution =
+  | { matched: true; asset: KnownAsset }
+  | { matched: false; rawName: string };
+
+export function resolveAssetName(rawName: string): AssetResolution {
+  const normalized = rawName.toUpperCase();
+
+  for (const known of KNOWN_ASSETS) {
+    if (known.matchFragments.some((f) => normalized.includes(f.toUpperCase()))) {
+      return { matched: true, asset: known };
+    }
+  }
+
+  return { matched: false, rawName };
+}

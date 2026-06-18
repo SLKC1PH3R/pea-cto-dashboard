@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { annualFeeRatio } from "@/lib/finance-calculations";
 import { getQuotes } from "@/lib/finnhub";
 import { currentQuantity } from "@/lib/finance-calculations";
 
 export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
   const accountId = req.nextUrl.searchParams.get("accountId");
 
   const fees = await prisma.fee.findMany({
-    where: accountId ? { accountId } : undefined,
+    where: {
+      account: { userId: session.user.id },
+      ...(accountId ? { accountId } : {}),
+    },
   });
 
   const totalFeesAllTime = fees.reduce((sum, f) => sum + f.amount.toNumber(), 0);
@@ -29,7 +38,10 @@ export async function GET(req: NextRequest) {
   // Valeur moyenne du portefeuille sur 12 mois (approximation simple :
   // valeur actuelle, faute d'historique de valorisation au jour le jour)
   const positions = await prisma.position.findMany({
-    where: accountId ? { accountId } : undefined,
+    where: {
+      account: { userId: session.user.id },
+      ...(accountId ? { accountId } : {}),
+    },
     include: { asset: true, transactions: true },
   });
 

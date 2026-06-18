@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { getQuotes } from "@/lib/finnhub";
 import {
   currentQuantity,
@@ -12,10 +13,18 @@ import {
 import { PositionMetrics } from "@/types/dashboard";
 
 export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
   const accountId = req.nextUrl.searchParams.get("accountId");
 
   const positions = await prisma.position.findMany({
-    where: accountId ? { accountId } : undefined,
+    where: {
+      account: { userId: session.user.id },
+      ...(accountId ? { accountId } : {}),
+    },
     include: { asset: true, transactions: true, dividends: true },
   });
 

@@ -10,6 +10,23 @@ datasource db {
 }
 
 // ============================================================
+// UTILISATEUR (auth email/password)
+// ============================================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts        Account[]
+  dashboardLayouts DashboardLayout[]
+  dcaRules        DcaRule[]
+}
+
+// ============================================================
 // COMPTES
 // ============================================================
 
@@ -25,6 +42,8 @@ enum Broker {
 
 model Account {
   id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String // ex: "PEA Boursorama"
   type      AccountType
   broker    Broker
@@ -36,8 +55,10 @@ model Account {
   deposits    Deposit[]
   fees        Fee[]
   positions   Position[]
+  dcaRules    DcaRule[]
 
   @@index([type])
+  @@index([userId])
 }
 
 // ============================================================
@@ -103,6 +124,7 @@ model Asset {
   createdAt       DateTime   @default(now())
 
   positions Position[]
+  dcaRules  DcaRule[]
 
   @@index([assetType])
 }
@@ -130,21 +152,33 @@ enum TxType {
   SELL
 }
 
+enum TxStatus {
+  CONFIRMED  // transaction réelle, confirmée (import PDF ou saisie manuelle validée)
+  PROJECTED  // générée automatiquement par une DcaRule, pas encore confirmée
+}
+
 model Transaction {
   id         String   @id @default(cuid())
   positionId String
   position   Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
   type       TxType
+  status     TxStatus @default(CONFIRMED)
   quantity   Decimal  @db.Decimal(18, 6)
   price      Decimal  @db.Decimal(18, 4) // prix unitaire dans la devise de l'actif
   fees       Decimal  @db.Decimal(18, 2) @default(0)
   date       DateTime
   note       String?
+  // Si la transaction provient d'une règle DCA (projetée ou confirmée à partir d'une projection)
+  dcaRuleId  String?
+  dcaRule    DcaRule? @relation(fields: [dcaRuleId], references: [id])
+  // Si importée depuis un PDF, on garde une trace pour éviter les doublons
+  sourceDocument String? // ex: nom du fichier PDF original
   createdAt  DateTime @default(now())
 
   relatedFees Fee[]
 
   @@index([positionId, date])
+  @@index([dcaRuleId])
 }
 
 model Dividend {
@@ -159,6 +193,37 @@ model Dividend {
   createdAt   DateTime @default(now())
 
   @@index([positionId, date])
+}
+
+// ============================================================
+// PLANS D'INVESTISSEMENT PROGRAMMÉ (DCA)
+// ============================================================
+
+enum DcaFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+model DcaRule {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId     String
+  account       Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  assetId       String
+  asset         Asset        @relation(fields: [assetId], references: [id])
+  amount        Decimal      @db.Decimal(18, 2) // montant investi à chaque exécution, dans la devise du compte
+  frequency     DcaFrequency
+  firstExecution DateTime
+  active        Boolean      @default(true)
+  note          String?      // ex: référence du plan ("d356-159c" chez Trade Republic)
+  createdAt     DateTime     @default(now())
+
+  transactions Transaction[] // transactions confirmées ou projetées issues de cette règle
+
+  @@index([userId])
+  @@index([accountId])
 }
 
 // ============================================================
@@ -182,12 +247,16 @@ model PriceHistory {
 
 model DashboardLayout {
   id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String   @default("Mon dashboard")
   isDefault Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   widgets Widget[]
+
+  @@index([userId])
 }
 
 enum WidgetType {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { WidgetType, Prisma } from "@prisma/client";
 
 type WidgetInput = {
@@ -13,7 +14,21 @@ type WidgetInput = {
 };
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const layoutId = (await params).id;
+  const { id: layoutId } = await params;
+
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
+  // Vérifie que ce layout appartient bien à l'utilisateur connecté
+  const layout = await prisma.dashboardLayout.findFirst({
+    where: { id: layoutId, userId: session.user.id },
+  });
+  if (!layout) {
+    return NextResponse.json({ error: "Layout introuvable" }, { status: 404 });
+  }
+
   const body = await req.json();
   const widgets: WidgetInput[] = body.widgets ?? [];
 

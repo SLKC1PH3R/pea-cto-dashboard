@@ -1,20 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getQuotes } from "@/lib/finnhub";
+import { auth } from "@/lib/auth";
 import {
   currentQuantity,
   totalAcquisitionCost,
   unrealizedPnl,
   realizedPnl,
 } from "@/lib/finance-calculations";
+import { getQuotes } from "@/lib/finnhub";
 
 export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
   const accountId = req.nextUrl.searchParams.get("accountId");
 
   const positions = await prisma.position.findMany({
-    where: accountId ? { accountId } : undefined,
+    where: {
+      account: { userId: session.user.id },
+      ...(accountId ? { accountId } : {}),
+    },
     include: { asset: true, transactions: true },
   });
+
+  // Note : les transactions PROJECTED (issues d'un plan DCA sans confirmation
+  // d'exécution réelle) sont incluses dans les calculs ci-dessous par défaut,
+  // car elles représentent la meilleure estimation disponible. Elles restent
+  // identifiables via `status` côté UI pour que l'utilisateur sache que la
+  // précision est approximative jusqu'à ajustement manuel.
 
   if (positions.length === 0) {
     return NextResponse.json({
@@ -33,6 +48,7 @@ export async function GET(req: NextRequest) {
   let totalCost = 0;
   let totalUnrealized = 0;
   let totalRealized = 0;
+  let hasProjectedTransactions = false;
 
   for (const position of positions) {
     const txs = position.transactions.map((t) => ({
@@ -42,6 +58,10 @@ export async function GET(req: NextRequest) {
       fees: t.fees,
       date: t.date,
     }));
+
+    if (position.transactions.some((t) => t.status === "PROJECTED")) {
+      hasProjectedTransactions = true;
+    }
 
     const quote = quotes[position.asset.ticker];
     const currentPrice = quote?.c ?? 0;
@@ -65,5 +85,6 @@ export async function GET(req: NextRequest) {
     unrealizedPnl: totalUnrealized,
     unrealizedPnlPct: unrealizedPct,
     realizedPnl: totalRealized,
+    hasProjectedTransactions,
   });
 }

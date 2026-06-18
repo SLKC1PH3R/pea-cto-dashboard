@@ -8,6 +8,7 @@ type AccountSummary = {
   unrealizedPnl: number;
   unrealizedPnlPct: number;
   realizedPnl: number;
+  hasProjectedTransactions?: boolean;
 };
 
 type TotalValueWidgetProps = {
@@ -54,6 +55,11 @@ export function TotalValueWidget({ config }: TotalValueWidgetProps) {
       <span className="text-xs text-gray-400">
         Réalisé : {summary.realizedPnl.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}
       </span>
+      {summary.hasProjectedTransactions && (
+        <span className="mt-1 inline-block w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+          Inclut des estimations DCA
+        </span>
+      )}
     </div>
   );
 }
