@@ -17,11 +17,30 @@ CREATE TYPE "AssetType" AS ENUM ('ACTION', 'ETF_DISTRIBUANT', 'ETF_CAPITALISANT'
 CREATE TYPE "TxType" AS ENUM ('BUY', 'SELL');
 
 -- CreateEnum
+CREATE TYPE "TxStatus" AS ENUM ('CONFIRMED', 'PROJECTED');
+
+-- CreateEnum
+CREATE TYPE "DcaFrequency" AS ENUM ('WEEKLY', 'BIWEEKLY', 'MONTHLY');
+
+-- CreateEnum
 CREATE TYPE "WidgetType" AS ENUM ('TOTAL_VALUE', 'PNL_CHART', 'ALLOCATION_SECTOR', 'ALLOCATION_GEO', 'ALLOCATION_CURRENCY', 'BENCHMARK_COMPARISON', 'FEES_SUMMARY', 'DIVIDEND_CALENDAR', 'POSITIONS_TABLE', 'DEPOSITS_HISTORY', 'STOCK_VS_ETF');
+
+-- CreateTable
+CREATE TABLE "User" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "passwordHash" TEXT NOT NULL,
+    "name" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
 
 -- CreateTable
 CREATE TABLE "Account" (
     "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "type" "AccountType" NOT NULL,
     "broker" "Broker" NOT NULL,
@@ -90,11 +109,14 @@ CREATE TABLE "Transaction" (
     "id" TEXT NOT NULL,
     "positionId" TEXT NOT NULL,
     "type" "TxType" NOT NULL,
+    "status" "TxStatus" NOT NULL DEFAULT 'CONFIRMED',
     "quantity" DECIMAL(18,6) NOT NULL,
     "price" DECIMAL(18,4) NOT NULL,
     "fees" DECIMAL(18,2) NOT NULL DEFAULT 0,
     "date" TIMESTAMP(3) NOT NULL,
     "note" TEXT,
+    "dcaRuleId" TEXT,
+    "sourceDocument" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Transaction_pkey" PRIMARY KEY ("id")
@@ -115,6 +137,22 @@ CREATE TABLE "Dividend" (
 );
 
 -- CreateTable
+CREATE TABLE "DcaRule" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "accountId" TEXT NOT NULL,
+    "assetId" TEXT NOT NULL,
+    "amount" DECIMAL(18,2) NOT NULL,
+    "frequency" "DcaFrequency" NOT NULL,
+    "firstExecution" TIMESTAMP(3) NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "note" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DcaRule_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "PriceHistory" (
     "id" TEXT NOT NULL,
     "ticker" TEXT NOT NULL,
@@ -128,6 +166,7 @@ CREATE TABLE "PriceHistory" (
 -- CreateTable
 CREATE TABLE "DashboardLayout" (
     "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "name" TEXT NOT NULL DEFAULT 'Mon dashboard',
     "isDefault" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -151,7 +190,13 @@ CREATE TABLE "Widget" (
 );
 
 -- CreateIndex
+CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+
+-- CreateIndex
 CREATE INDEX "Account_type_idx" ON "Account"("type");
+
+-- CreateIndex
+CREATE INDEX "Account_userId_idx" ON "Account"("userId");
 
 -- CreateIndex
 CREATE INDEX "Deposit_accountId_date_idx" ON "Deposit"("accountId", "date");
@@ -172,7 +217,16 @@ CREATE UNIQUE INDEX "Position_accountId_assetId_key" ON "Position"("accountId", 
 CREATE INDEX "Transaction_positionId_date_idx" ON "Transaction"("positionId", "date");
 
 -- CreateIndex
+CREATE INDEX "Transaction_dcaRuleId_idx" ON "Transaction"("dcaRuleId");
+
+-- CreateIndex
 CREATE INDEX "Dividend_positionId_date_idx" ON "Dividend"("positionId", "date");
+
+-- CreateIndex
+CREATE INDEX "DcaRule_userId_idx" ON "DcaRule"("userId");
+
+-- CreateIndex
+CREATE INDEX "DcaRule_accountId_idx" ON "DcaRule"("accountId");
 
 -- CreateIndex
 CREATE INDEX "PriceHistory_ticker_idx" ON "PriceHistory"("ticker");
@@ -181,7 +235,13 @@ CREATE INDEX "PriceHistory_ticker_idx" ON "PriceHistory"("ticker");
 CREATE UNIQUE INDEX "PriceHistory_ticker_date_key" ON "PriceHistory"("ticker", "date");
 
 -- CreateIndex
+CREATE INDEX "DashboardLayout_userId_idx" ON "DashboardLayout"("userId");
+
+-- CreateIndex
 CREATE INDEX "Widget_layoutId_idx" ON "Widget"("layoutId");
+
+-- AddForeignKey
+ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Deposit" ADD CONSTRAINT "Deposit_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "Account"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -202,7 +262,22 @@ ALTER TABLE "Position" ADD CONSTRAINT "Position_assetId_fkey" FOREIGN KEY ("asse
 ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_positionId_fkey" FOREIGN KEY ("positionId") REFERENCES "Position"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_dcaRuleId_fkey" FOREIGN KEY ("dcaRuleId") REFERENCES "DcaRule"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Dividend" ADD CONSTRAINT "Dividend_positionId_fkey" FOREIGN KEY ("positionId") REFERENCES "Position"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DcaRule" ADD CONSTRAINT "DcaRule_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DcaRule" ADD CONSTRAINT "DcaRule_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "Account"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DcaRule" ADD CONSTRAINT "DcaRule_assetId_fkey" FOREIGN KEY ("assetId") REFERENCES "Asset"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DashboardLayout" ADD CONSTRAINT "DashboardLayout_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Widget" ADD CONSTRAINT "Widget_layoutId_fkey" FOREIGN KEY ("layoutId") REFERENCES "DashboardLayout"("id") ON DELETE CASCADE ON UPDATE CASCADE;
