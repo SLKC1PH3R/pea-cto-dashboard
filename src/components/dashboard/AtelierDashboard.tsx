@@ -61,8 +61,17 @@ export function AtelierDashboard({
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [projRate, setProjRate] = useState(5);
   const [projMonthly, setProjMonthly] = useState(0);
+  const [watchlist, setWatchlist] = useState(data.watchlist);
 
   const isEmpty = data.positions.length === 0 && data.cash <= 0;
+
+  function addWatchlistItem(item: (typeof watchlist)[number]) {
+    setWatchlist((prev) => [...prev.filter((w) => w.ticker !== item.ticker), item]);
+  }
+
+  function removeWatchlistItem(ticker: string) {
+    setWatchlist((prev) => prev.filter((w) => w.ticker !== ticker));
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -127,11 +136,11 @@ export function AtelierDashboard({
   const movers = useMemo(() => {
     const all = [
       ...data.positions.map((p) => ({ name: p.name, ticker: p.ticker, pct: p.day })),
-      ...data.watchlist.map((w) => ({ name: w.name, ticker: w.ticker, pct: w.day })),
+      ...watchlist.map((w) => ({ name: w.name, ticker: w.ticker, pct: w.day })),
     ];
     const sorted = [...all].sort((a, b) => b.pct - a.pct);
     return { up: sorted.slice(0, 3), down: sorted.slice(-3).reverse() };
-  }, [data.positions, data.watchlist]);
+  }, [data.positions, watchlist]);
 
   const allocColor = (cls: string) => data.alloc.find((a) => a.label === cls)?.color ?? "var(--fg3)";
   const sectorColor = (label: string) => data.sectors.find((s) => s.label === label)?.color ?? "var(--fg3)";
@@ -484,9 +493,9 @@ export function AtelierDashboard({
             <section className="col-span-8 overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--panel)]" style={{ boxShadow: "var(--shadow)" }}>
               <div className="flex items-center justify-between px-6 pb-[14px] pt-[22px]">
                 <h2 className="text-[17px] font-bold text-[var(--fg)]">Ta liste de suivi</h2>
-                <span className="text-[12.5px] text-[var(--fg2)]">{data.watchlist.length} actif(s)</span>
+                <span className="text-[12.5px] text-[var(--fg2)]">{watchlist.length} actif(s)</span>
               </div>
-              {data.watchlist.length === 0 ? (
+              {watchlist.length === 0 ? (
                 <p className="px-6 pb-6 text-[13px] text-[var(--fg2)]">
                   Pas encore d'actif suivi — cherche-en un ci-dessous et clique sur « + Suivre ».
                 </p>
@@ -494,13 +503,13 @@ export function AtelierDashboard({
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="border-y border-[var(--line)]">
-                      {[["Instrument", "left", "px-6"], ["Cours", "right", "px-3"], ["Jour", "right", "px-6"]].map(([l, a, pad]) => (
-                        <th key={l} className={`${pad} py-[9px] text-[11px] font-semibold uppercase tracking-wide text-[var(--fg3)] ${a === "right" ? "text-right" : "text-left"}`}>{l}</th>
+                      {[["Instrument", "left", "px-6"], ["Cours", "right", "px-3"], ["Jour", "right", "px-3"], ["", "right", "px-6"]].map(([l, a, pad], i) => (
+                        <th key={i} className={`${pad} py-[9px] text-[11px] font-semibold uppercase tracking-wide text-[var(--fg3)] ${a === "right" ? "text-right" : "text-left"}`}>{l}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {data.watchlist.map((w) => (
+                    {watchlist.map((w) => (
                       <tr key={w.ticker} className="border-b border-[var(--line)] hover:bg-[var(--panel2)]">
                         <td className="px-6 py-[11px]">
                           <div className="flex flex-col leading-[1.25]">
@@ -509,8 +518,20 @@ export function AtelierDashboard({
                           </div>
                         </td>
                         <td style={num} className="px-3 py-[11px] text-right font-semibold text-[var(--fg)]">{eur(w.price, 2)}</td>
-                        <td className="px-6 py-[11px] text-right">
+                        <td className="px-3 py-[11px] text-right">
                           <span style={{ ...num, color: w.day >= 0 ? "var(--pos)" : "var(--neg)", background: w.day >= 0 ? "var(--posbg)" : "var(--negbg)" }} className="rounded-[7px] px-2 py-[3px] text-[12px] font-bold">{signPct(w.day)}</span>
+                        </td>
+                        <td className="px-6 py-[11px] text-right">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await fetch(`/api/watchlist?ticker=${encodeURIComponent(w.ticker)}`, { method: "DELETE" });
+                              removeWatchlistItem(w.ticker);
+                            }}
+                            className="text-[11px] text-[var(--fg3)] hover:text-[var(--neg)]"
+                          >
+                            Retirer
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -528,7 +549,7 @@ export function AtelierDashboard({
 
             <section className="col-span-12">
               <h2 className="mb-[14px] text-[17px] font-bold text-[var(--fg)]">Chercher une action ou un ETF</h2>
-              <MarketsBrowser initialWatchlist={data.watchlist.map((w) => w.ticker)} />
+              <MarketsBrowser watchlist={watchlist} onAdd={addWatchlistItem} onRemove={removeWatchlistItem} />
             </section>
           </div>
         )}

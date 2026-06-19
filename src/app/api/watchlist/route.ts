@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { getQuote } from "@/lib/finnhub";
 
 export async function GET() {
   const session = await auth();
@@ -33,7 +34,20 @@ export async function POST(req: NextRequest) {
     create: { userId: session.user.id, ticker, name: body.name ?? null },
   });
 
-  return NextResponse.json(item, { status: 201 });
+  // On renvoie la cotation tout de suite pour que le client puisse afficher
+  // la ligne immédiatement, sans attendre un rechargement de page.
+  let price: number | null = null;
+  let day: number | null = null;
+  try {
+    const quote = await getQuote(ticker);
+    price = quote.c;
+    day = quote.dp;
+  } catch {
+    // Cotation indisponible (ticker non couvert par Finnhub) — la ligne
+    // s'affichera sans prix plutôt que de bloquer l'ajout.
+  }
+
+  return NextResponse.json({ ...item, price, day }, { status: 201 });
 }
 
 export async function DELETE(req: NextRequest) {

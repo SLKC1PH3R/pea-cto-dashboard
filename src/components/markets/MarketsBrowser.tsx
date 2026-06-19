@@ -2,9 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { MARKET_CATALOG, type CatalogAsset } from "@/lib/markets/catalog";
+import type { WatchItem } from "@/components/dashboard/atelier-data";
 
 type MarketsBrowserProps = {
-  initialWatchlist: string[];
+  watchlist: WatchItem[];
+  onAdd: (item: WatchItem) => void;
+  onRemove: (ticker: string) => void;
 };
 
 type TypeFilter = "ALL" | "ACTION" | "ETF";
@@ -21,11 +24,12 @@ function rank(query: string, asset: CatalogAsset): number {
   return 4;
 }
 
-export function MarketsBrowser({ initialWatchlist }: MarketsBrowserProps) {
+export function MarketsBrowser({ watchlist, onAdd, onRemove }: MarketsBrowserProps) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
-  const [watchlist, setWatchlist] = useState<string[]>(initialWatchlist.map((t) => t.toUpperCase()));
   const [pending, setPending] = useState<string | null>(null);
+
+  const watchedTickers = useMemo(() => new Set(watchlist.map((w) => w.ticker.toUpperCase())), [watchlist]);
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -40,22 +44,25 @@ export function MarketsBrowser({ initialWatchlist }: MarketsBrowserProps) {
 
   async function toggleWatch(ticker: string, name: string) {
     const upper = ticker.toUpperCase();
-    const isWatched = watchlist.includes(upper);
+    const isWatched = watchedTickers.has(upper);
     setPending(upper);
 
-    if (isWatched) {
-      await fetch(`/api/watchlist?ticker=${encodeURIComponent(upper)}`, { method: "DELETE" });
-      setWatchlist((prev) => prev.filter((t) => t !== upper));
-    } else {
-      await fetch("/api/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticker: upper, name }),
-      });
-      setWatchlist((prev) => [...prev, upper]);
+    try {
+      if (isWatched) {
+        await fetch(`/api/watchlist?ticker=${encodeURIComponent(upper)}`, { method: "DELETE" });
+        onRemove(upper);
+      } else {
+        const res = await fetch("/api/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ticker: upper, name }),
+        });
+        const data = await res.json();
+        onAdd({ name, ticker: upper, cls: "Watchlist", price: data.price ?? 0, day: data.day ?? 0 });
+      }
+    } finally {
+      setPending(null);
     }
-
-    setPending(null);
   }
 
   return (
@@ -100,7 +107,7 @@ export function MarketsBrowser({ initialWatchlist }: MarketsBrowserProps) {
           </thead>
           <tbody>
             {filtered.map((a) => {
-              const watched = watchlist.includes(a.ticker.toUpperCase());
+              const watched = watchedTickers.has(a.ticker.toUpperCase());
               return (
                 <tr key={a.ticker} className="border-b border-[var(--line)] hover:bg-[var(--panel2)]">
                   <td className="px-6 py-[10px]">
