@@ -5,6 +5,7 @@ import { ImportDropzone } from "@/components/import/ImportDropzone";
 import { ManualTransactionForm } from "@/components/import/ManualTransactionForm";
 import { DcaRuleForm } from "@/components/import/DcaRuleForm";
 import { AccountManager } from "@/components/import/AccountManager";
+import { TransactionsManager } from "@/components/import/TransactionsManager";
 import { DashboardNav } from "@/components/dashboard/DashboardNav";
 import { PALETTE } from "@/components/dashboard/atelier-data";
 
@@ -25,7 +26,7 @@ export default async function ImportPage() {
       className="min-h-screen p-6"
       style={{ ...PALETTE.dark, background: "var(--bg)", color: "var(--fg)", fontFamily: "var(--font-body, 'Plus Jakarta Sans', system-ui)" }}
     >
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-4xl">
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-[19px] font-extrabold tracking-tight text-[var(--fg)]">Ajouter des transactions</h1>
@@ -69,6 +70,12 @@ export default async function ImportPage() {
               </section>
             </>
           )}
+
+          <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+            <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Transactions enregistrées</h2>
+            <p className="mb-4 text-[12.5px] text-[var(--fg2)]">Modifie ou supprime une ligne en cas d'erreur d'import ou de saisie</p>
+            <TransactionsManager />
+          </section>
         </div>
       </div>
     </main>

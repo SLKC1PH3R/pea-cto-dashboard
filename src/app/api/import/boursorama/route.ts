@@ -5,15 +5,37 @@ import { parseBoursoramaStatement } from "@/lib/parsers/boursorama-pdf";
 import { resolveAssetName } from "@/lib/parsers/asset-mapping";
 import { PDFParse } from "pdf-parse";
 
-type ImportFileResult = {
-  filename: string;
-  status: "ok" | "warning" | "error";
-  transactionsCreated: number;
-  depositsCreated: number;
-  unresolvedAssets: string[];
-  message?: string;
+export type PreviewTransaction = {
+  date: string;
+  operationLabel: string;
+  assetName: string;
+  ticker: string | null;
+  resolvedName: string | null;
+  quantity: number;
+  amount: number;
+  type: "BUY" | "SELL";
 };
 
+export type PreviewDeposit = {
+  date: string;
+  label: string;
+  amount: number;
+};
+
+type PreviewFileResult = {
+  filename: string;
+  status: "ok" | "warning" | "error";
+  message?: string;
+  alreadyImported: boolean;
+  transactions: PreviewTransaction[];
+  deposits: PreviewDeposit[];
+};
+
+/**
+ * Parse les PDF déposés et renvoie un aperçu — aucune écriture en base ici.
+ * L'utilisateur valide/édite les lignes côté client puis confirme via
+ * POST /api/import/boursorama/confirm.
+ */
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -31,7 +53,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Aucun fichier fourni" }, { status: 400 });
   }
 
-  // Vérifie que le compte appartient bien à l'utilisateur connecté
   const account = await prisma.account.findFirst({
     where: { id: accountId, userId: session.user.id },
   });
@@ -39,15 +60,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Compte introuvable" }, { status: 404 });
   }
 
-  const results: ImportFileResult[] = [];
+  const results: PreviewFileResult[] = [];
 
   for (const file of files) {
-    const result: ImportFileResult = {
+    const result: PreviewFileResult = {
       filename: file.name,
       status: "ok",
-      transactionsCreated: 0,
-      depositsCreated: 0,
-      unresolvedAssets: [],
+      alreadyImported: false,
+      transactions: [],
+      deposits: [],
     };
 
     try {
@@ -62,87 +83,38 @@ export async function POST(req: NextRequest) {
         result.message = parsed.warnings.join(" ");
       }
 
-      // Évite les doublons : on vérifie si une transaction avec le même
-      // sourceDocument (nom de fichier) a déjà été importée.
       const alreadyImported = await prisma.transaction.findFirst({
         where: { sourceDocument: file.name },
       });
       if (alreadyImported) {
         result.status = "warning";
+        result.alreadyImported = true;
         result.message = "Ce fichier semble déjà avoir été importé (même nom de fichier détecté en base).";
-        results.push(result);
-        continue;
       }
 
-      for (const tx of parsed.transactions) {
+      result.transactions = parsed.transactions.map((tx) => {
         const resolution = resolveAssetName(tx.assetName);
+        return {
+          date: tx.date.toISOString().slice(0, 10),
+          operationLabel: tx.operationLabel,
+          assetName: tx.assetName,
+          ticker: resolution.matched ? resolution.asset.ticker : null,
+          resolvedName: resolution.matched ? resolution.asset.name : null,
+          quantity: tx.quantity,
+          amount: tx.amount,
+          type: tx.type,
+        };
+      });
 
-        if (!resolution.matched) {
-          result.unresolvedAssets.push(tx.assetName);
-          result.status = "warning";
-          continue; // on ne peut pas créer la transaction sans actif identifié
-        }
+      result.deposits = parsed.deposits.map((d) => ({
+        date: d.date.toISOString().slice(0, 10),
+        label: d.label,
+        amount: d.amount,
+      }));
 
-        const known = resolution.asset;
-
-        // Upsert de l'actif
-        const asset = await prisma.asset.upsert({
-          where: { ticker: known.ticker },
-          update: {},
-          create: {
-            ticker: known.ticker,
-            isin: known.isin,
-            name: known.name,
-            sector: known.sector,
-            region: known.region,
-            currency: known.currency,
-            assetType: known.assetType,
-            benchmarkTicker: known.benchmarkTicker,
-          },
-        });
-
-        // Upsert de la position (compte + actif)
-        const position = await prisma.position.upsert({
-          where: { accountId_assetId: { accountId, assetId: asset.id } },
-          update: {},
-          create: { accountId, assetId: asset.id },
-        });
-
-        // Prix unitaire = montant total / quantité (le relevé donne le montant
-        // total débité, pas le prix unitaire)
-        const unitPrice = tx.amount / tx.quantity;
-
-        await prisma.transaction.create({
-          data: {
-            positionId: position.id,
-            type: tx.type,
-            status: "CONFIRMED",
-            quantity: tx.quantity,
-            price: unitPrice,
-            fees: 0, // le relevé ne distingue pas les frais du montant total ici
-            date: tx.date,
-            sourceDocument: file.name,
-            note: `Importé depuis PDF — ${tx.operationLabel}`,
-          },
-        });
-
-        result.transactionsCreated++;
-      }
-
-      for (const dep of parsed.deposits) {
-        await prisma.deposit.create({
-          data: {
-            accountId,
-            amount: dep.amount,
-            date: dep.date,
-            note: `Importé depuis PDF — ${dep.label}`,
-          },
-        });
-        result.depositsCreated++;
-      }
-
-      if (result.unresolvedAssets.length > 0) {
-        result.message = `Actifs non reconnus (à ajouter dans la table de correspondance) : ${result.unresolvedAssets.join(", ")}`;
+      if (result.transactions.some((t) => !t.ticker) && result.status === "ok") {
+        result.status = "warning";
+        result.message = "Certains actifs n'ont pas pu être reconnus automatiquement — renseigne leur ticker avant de confirmer.";
       }
     } catch (err) {
       result.status = "error";
