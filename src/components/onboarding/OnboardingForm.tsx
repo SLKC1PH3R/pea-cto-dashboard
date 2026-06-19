@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { AssetSearch } from "@/components/markets/AssetSearch";
+import { PALETTE } from "@/components/dashboard/atelier-data";
 
 type AccountType = "PEA" | "CTO";
 
@@ -17,7 +19,6 @@ export function OnboardingForm() {
 
   const [name, setName] = useState("");
   const [accountTypes, setAccountTypes] = useState<AccountType[]>([]);
-  const [tickerInput, setTickerInput] = useState("");
   const [watchlist, setWatchlist] = useState<string[]>([]);
   const [hasGoal, setHasGoal] = useState(false);
   const [goalAmount, setGoalAmount] = useState("");
@@ -28,21 +29,10 @@ export function OnboardingForm() {
     setAccountTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
   }
 
-  function addTicker() {
-    const value = tickerInput.trim().toUpperCase();
-    if (!value || watchlist.includes(value)) {
-      setTickerInput("");
-      return;
-    }
+  function addTicker(ticker: string) {
+    const value = ticker.trim().toUpperCase();
+    if (!value || watchlist.includes(value)) return;
     setWatchlist((prev) => [...prev, value]);
-    setTickerInput("");
-  }
-
-  function handleTickerKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      addTicker();
-    }
   }
 
   function removeTicker(value: string) {
@@ -86,7 +76,7 @@ export function OnboardingForm() {
   return (
     <main
       className="flex min-h-screen items-center justify-center px-4 py-10"
-      style={{ background: "#0e0c16", color: "#f0edf8", fontFamily: "var(--font-body, 'Plus Jakarta Sans', system-ui)" }}
+      style={{ ...PALETTE.dark, background: "var(--bg)", color: "var(--fg)", fontFamily: "var(--font-body, 'Plus Jakarta Sans', system-ui)" }}
     >
       <div
         className="w-full max-w-lg rounded-[22px] border p-8"
@@ -152,29 +142,14 @@ export function OnboardingForm() {
 
           {/* Watchlist */}
           <div>
-            <label className="mb-1 block text-[12.5px] font-semibold text-[#a79fbd]" htmlFor="ticker">
+            <label className="mb-1 block text-[12.5px] font-semibold text-[#a79fbd]">
               Actions / ETF que tu veux suivre <span className="text-[#6e6685]">(optionnel)</span>
             </label>
-            <div className="flex gap-2">
-              <input
-                id="ticker"
-                type="text"
-                value={tickerInput}
-                onChange={(e) => setTickerInput(e.target.value)}
-                onKeyDown={handleTickerKeyDown}
-                className="flex-1 rounded-[11px] border px-3 py-2 text-sm outline-none focus:ring-2"
-                style={inputStyle}
-                placeholder="ex : AAPL, MC.PA…"
-              />
-              <button
-                type="button"
-                onClick={addTicker}
-                className="rounded-[11px] border px-4 text-[13px] font-semibold"
-                style={{ borderColor: "rgba(255,255,255,.07)", background: "#221c34", color: "#f0edf8" }}
-              >
-                Ajouter
-              </button>
-            </div>
+            <AssetSearch
+              onSelect={(asset) => addTicker(asset.ticker)}
+              excludeTickers={watchlist}
+              placeholder="ex : ME pour Meta, NV pour Nvidia, SP500…"
+            />
             {watchlist.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {watchlist.map((t) => (

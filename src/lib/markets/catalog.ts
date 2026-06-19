@@ -1,0 +1,177 @@
+/**
+ * Catalogue statique d'actifs pour la recherche (page Marchés, watchlist).
+ * Pas de prix ici — uniquement de quoi chercher/sélectionner un ticker.
+ */
+
+export type CatalogAsset = {
+  ticker: string;
+  name: string;
+  type: "ACTION" | "ETF";
+  region: string;
+  sector?: string;
+};
+
+export const MARKET_CATALOG: CatalogAsset[] = [
+  // ── Actions US — Tech ──────────────────────────────────────
+  { ticker: "AAPL", name: "Apple", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "MSFT", name: "Microsoft", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "GOOGL", name: "Alphabet (Google)", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "AMZN", name: "Amazon", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "META", name: "Meta Platforms", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "NVDA", name: "NVIDIA", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "TSLA", name: "Tesla", type: "ACTION", region: "USA", sector: "Automobile" },
+  { ticker: "AVGO", name: "Broadcom", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "ORCL", name: "Oracle", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "CRM", name: "Salesforce", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "ADBE", name: "Adobe", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "AMD", name: "Advanced Micro Devices", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "INTC", name: "Intel", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "QCOM", name: "Qualcomm", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "CSCO", name: "Cisco Systems", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "IBM", name: "IBM", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "NFLX", name: "Netflix", type: "ACTION", region: "USA", sector: "Médias" },
+  { ticker: "UBER", name: "Uber Technologies", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "SHOP", name: "Shopify", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "PLTR", name: "Palantir Technologies", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "TSM", name: "Taiwan Semiconductor (ADR)", type: "ACTION", region: "Asie", sector: "Technologie" },
+  { ticker: "ASML", name: "ASML Holding", type: "ACTION", region: "Europe", sector: "Technologie" },
+  { ticker: "SAP", name: "SAP", type: "ACTION", region: "Europe", sector: "Technologie" },
+
+  // ── Actions US — Finance ───────────────────────────────────
+  { ticker: "JPM", name: "JPMorgan Chase", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "BAC", name: "Bank of America", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "WFC", name: "Wells Fargo", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "GS", name: "Goldman Sachs", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "MS", name: "Morgan Stanley", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "V", name: "Visa", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "MA", name: "Mastercard", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "AXP", name: "American Express", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "BRK.B", name: "Berkshire Hathaway", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "BLK", name: "BlackRock", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "PYPL", name: "PayPal", type: "ACTION", region: "USA", sector: "Finance" },
+
+  // ── Actions US — Santé ─────────────────────────────────────
+  { ticker: "LLY", name: "Eli Lilly", type: "ACTION", region: "USA", sector: "Santé" },
+  { ticker: "UNH", name: "UnitedHealth Group", type: "ACTION", region: "USA", sector: "Santé" },
+  { ticker: "JNJ", name: "Johnson & Johnson", type: "ACTION", region: "USA", sector: "Santé" },
+  { ticker: "PFE", name: "Pfizer", type: "ACTION", region: "USA", sector: "Santé" },
+  { ticker: "ABBV", name: "AbbVie", type: "ACTION", region: "USA", sector: "Santé" },
+  { ticker: "MRK", name: "Merck & Co", type: "ACTION", region: "USA", sector: "Santé" },
+  { ticker: "NVO", name: "Novo Nordisk (ADR)", type: "ACTION", region: "Europe", sector: "Santé" },
+
+  // ── Actions US — Conso / Industrie / Énergie ───────────────
+  { ticker: "WMT", name: "Walmart", type: "ACTION", region: "USA", sector: "Consommation" },
+  { ticker: "PG", name: "Procter & Gamble", type: "ACTION", region: "USA", sector: "Consommation" },
+  { ticker: "KO", name: "Coca-Cola", type: "ACTION", region: "USA", sector: "Consommation" },
+  { ticker: "PEP", name: "PepsiCo", type: "ACTION", region: "USA", sector: "Consommation" },
+  { ticker: "COST", name: "Costco Wholesale", type: "ACTION", region: "USA", sector: "Consommation" },
+  { ticker: "MCD", name: "McDonald's", type: "ACTION", region: "USA", sector: "Consommation" },
+  { ticker: "NKE", name: "Nike", type: "ACTION", region: "USA", sector: "Consommation" },
+  { ticker: "SBUX", name: "Starbucks", type: "ACTION", region: "USA", sector: "Consommation" },
+  { ticker: "DIS", name: "Walt Disney", type: "ACTION", region: "USA", sector: "Médias" },
+  { ticker: "HD", name: "Home Depot", type: "ACTION", region: "USA", sector: "Consommation" },
+  { ticker: "XOM", name: "ExxonMobil", type: "ACTION", region: "USA", sector: "Énergie" },
+  { ticker: "CVX", name: "Chevron", type: "ACTION", region: "USA", sector: "Énergie" },
+  { ticker: "BA", name: "Boeing", type: "ACTION", region: "USA", sector: "Industrie" },
+  { ticker: "CAT", name: "Caterpillar", type: "ACTION", region: "USA", sector: "Industrie" },
+  { ticker: "GE", name: "General Electric", type: "ACTION", region: "USA", sector: "Industrie" },
+  { ticker: "F", name: "Ford Motor", type: "ACTION", region: "USA", sector: "Automobile" },
+  { ticker: "GM", name: "General Motors", type: "ACTION", region: "USA", sector: "Automobile" },
+
+  // ── Actions Europe ─────────────────────────────────────────
+  { ticker: "MC.PA", name: "LVMH", type: "ACTION", region: "Europe", sector: "Luxe" },
+  { ticker: "OR.PA", name: "L'Oréal", type: "ACTION", region: "Europe", sector: "Consommation" },
+  { ticker: "AIR.PA", name: "Airbus", type: "ACTION", region: "Europe", sector: "Industrie" },
+  { ticker: "SAN.PA", name: "Sanofi", type: "ACTION", region: "Europe", sector: "Santé" },
+  { ticker: "BNP.PA", name: "BNP Paribas", type: "ACTION", region: "Europe", sector: "Finance" },
+  { ticker: "TTE.PA", name: "TotalEnergies", type: "ACTION", region: "Europe", sector: "Énergie" },
+  { ticker: "DG.PA", name: "Vinci", type: "ACTION", region: "Europe", sector: "Industrie" },
+  { ticker: "RMS.PA", name: "Hermès", type: "ACTION", region: "Europe", sector: "Luxe" },
+  { ticker: "KER.PA", name: "Kering", type: "ACTION", region: "Europe", sector: "Luxe" },
+  { ticker: "SU.PA", name: "Schneider Electric", type: "ACTION", region: "Europe", sector: "Industrie" },
+  { ticker: "CAP.PA", name: "Capgemini", type: "ACTION", region: "Europe", sector: "Technologie" },
+  { ticker: "SIE.DE", name: "Siemens", type: "ACTION", region: "Europe", sector: "Industrie" },
+  { ticker: "VOW3.DE", name: "Volkswagen", type: "ACTION", region: "Europe", sector: "Automobile" },
+  { ticker: "MBG.DE", name: "Mercedes-Benz Group", type: "ACTION", region: "Europe", sector: "Automobile" },
+  { ticker: "ALV.DE", name: "Allianz", type: "ACTION", region: "Europe", sector: "Finance" },
+  { ticker: "BAYN.DE", name: "Bayer", type: "ACTION", region: "Europe", sector: "Santé" },
+  { ticker: "AZN.L", name: "AstraZeneca", type: "ACTION", region: "Europe", sector: "Santé" },
+  { ticker: "HSBA.L", name: "HSBC Holdings", type: "ACTION", region: "Europe", sector: "Finance" },
+  { ticker: "SHEL.L", name: "Shell", type: "ACTION", region: "Europe", sector: "Énergie" },
+  { ticker: "NESN.SW", name: "Nestlé", type: "ACTION", region: "Europe", sector: "Consommation" },
+  { ticker: "NOVN.SW", name: "Novartis", type: "ACTION", region: "Europe", sector: "Santé" },
+  { ticker: "ROG.SW", name: "Roche Holding", type: "ACTION", region: "Europe", sector: "Santé" },
+
+  // ── Actions Asie ───────────────────────────────────────────
+  { ticker: "BABA", name: "Alibaba Group (ADR)", type: "ACTION", region: "Asie", sector: "Technologie" },
+  { ticker: "9988.HK", name: "Alibaba Group", type: "ACTION", region: "Asie", sector: "Technologie" },
+  { ticker: "9999.HK", name: "NetEase", type: "ACTION", region: "Asie", sector: "Technologie" },
+  { ticker: "005930.KS", name: "Samsung Electronics", type: "ACTION", region: "Asie", sector: "Technologie" },
+  { ticker: "7203.T", name: "Toyota Motor", type: "ACTION", region: "Asie", sector: "Automobile" },
+  { ticker: "6758.T", name: "Sony Group", type: "ACTION", region: "Asie", sector: "Technologie" },
+  { ticker: "PDD", name: "PDD Holdings (Pinduoduo)", type: "ACTION", region: "Asie", sector: "Technologie" },
+  { ticker: "JD", name: "JD.com (ADR)", type: "ACTION", region: "Asie", sector: "Technologie" },
+
+  // ── Actions diverses ───────────────────────────────────────
+  { ticker: "SPOT", name: "Spotify Technology", type: "ACTION", region: "Europe", sector: "Médias" },
+  { ticker: "ABNB", name: "Airbnb", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "SQ", name: "Block (Square)", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "COIN", name: "Coinbase Global", type: "ACTION", region: "USA", sector: "Finance" },
+  { ticker: "SNOW", name: "Snowflake", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "CRWD", name: "CrowdStrike", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "NOW", name: "ServiceNow", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "PANW", name: "Palo Alto Networks", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "ARM", name: "Arm Holdings (ADR)", type: "ACTION", region: "Europe", sector: "Technologie" },
+  { ticker: "MU", name: "Micron Technology", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "TXN", name: "Texas Instruments", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "LRCX", name: "Lam Research", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "AMAT", name: "Applied Materials", type: "ACTION", region: "USA", sector: "Technologie" },
+  { ticker: "T", name: "AT&T", type: "ACTION", region: "USA", sector: "Télécom" },
+  { ticker: "VZ", name: "Verizon Communications", type: "ACTION", region: "USA", sector: "Télécom" },
+  { ticker: "ORA.PA", name: "Orange", type: "ACTION", region: "Europe", sector: "Télécom" },
+  { ticker: "LIN", name: "Linde", type: "ACTION", region: "USA", sector: "Industrie" },
+  { ticker: "RTX", name: "RTX Corporation", type: "ACTION", region: "USA", sector: "Industrie" },
+  { ticker: "LMT", name: "Lockheed Martin", type: "ACTION", region: "USA", sector: "Industrie" },
+  { ticker: "DE", name: "Deere & Company", type: "ACTION", region: "USA", sector: "Industrie" },
+
+  // ── ETF — indices larges ───────────────────────────────────
+  { ticker: "CW8.PA", name: "Amundi MSCI World", type: "ETF", region: "Monde", sector: "Diversifié" },
+  { ticker: "IWDA.AS", name: "iShares Core MSCI World", type: "ETF", region: "Monde", sector: "Diversifié" },
+  { ticker: "SWRD.L", name: "SPDR MSCI World", type: "ETF", region: "Monde", sector: "Diversifié" },
+  { ticker: "EWLD.PA", name: "Lyxor MSCI World", type: "ETF", region: "Monde", sector: "Diversifié" },
+  { ticker: "VWCE.DE", name: "Vanguard FTSE All-World", type: "ETF", region: "Monde", sector: "Diversifié" },
+  { ticker: "IUSN.DE", name: "iShares MSCI World Small Cap", type: "ETF", region: "Monde", sector: "Diversifié" },
+  { ticker: "ESE.PA", name: "BNP Paribas Easy S&P 500", type: "ETF", region: "USA", sector: "Diversifié" },
+  { ticker: "PE500.PA", name: "Amundi S&P 500", type: "ETF", region: "USA", sector: "Diversifié" },
+  { ticker: "SPY", name: "SPDR S&P 500 ETF Trust", type: "ETF", region: "USA", sector: "Diversifié" },
+  { ticker: "VOO", name: "Vanguard S&P 500", type: "ETF", region: "USA", sector: "Diversifié" },
+  { ticker: "IVV", name: "iShares Core S&P 500", type: "ETF", region: "USA", sector: "Diversifié" },
+  { ticker: "ANX.PA", name: "Amundi Nasdaq-100", type: "ETF", region: "USA", sector: "Technologie" },
+  { ticker: "QQQ", name: "Invesco QQQ Trust (Nasdaq-100)", type: "ETF", region: "USA", sector: "Technologie" },
+  { ticker: "PANX.PA", name: "Amundi PEA Nasdaq-100", type: "ETF", region: "USA", sector: "Technologie" },
+  { ticker: "EQQQ.PA", name: "Invesco EQQQ Nasdaq-100", type: "ETF", region: "USA", sector: "Technologie" },
+
+  // ── ETF — zones / pays ─────────────────────────────────────
+  { ticker: "CSP1.PA", name: "iShares Core S&P 500", type: "ETF", region: "USA", sector: "Diversifié" },
+  { ticker: "PCEU.PA", name: "Amundi PEA Europe", type: "ETF", region: "Europe", sector: "Diversifié" },
+  { ticker: "EMIM.AS", name: "iShares Core MSCI EM IMI", type: "ETF", region: "Émergents", sector: "Diversifié" },
+  { ticker: "PAEEM.PA", name: "Amundi PEA Pays Émergents", type: "ETF", region: "Émergents", sector: "Diversifié" },
+  { ticker: "CD8.PA", name: "Amundi MSCI Emerging Markets", type: "ETF", region: "Émergents", sector: "Diversifié" },
+  { ticker: "MEUD.PA", name: "Amundi Stoxx Europe 600", type: "ETF", region: "Europe", sector: "Diversifié" },
+  { ticker: "PCJP.PA", name: "Amundi PEA Japon", type: "ETF", region: "Asie", sector: "Diversifié" },
+  { ticker: "JPN.PA", name: "Lyxor MSCI Japan", type: "ETF", region: "Asie", sector: "Diversifié" },
+
+  // ── ETF — sectoriels / thématiques ─────────────────────────
+  { ticker: "XLK", name: "Technology Select Sector SPDR", type: "ETF", region: "USA", sector: "Technologie" },
+  { ticker: "XLF", name: "Financial Select Sector SPDR", type: "ETF", region: "USA", sector: "Finance" },
+  { ticker: "XLE", name: "Energy Select Sector SPDR", type: "ETF", region: "USA", sector: "Énergie" },
+  { ticker: "XLV", name: "Health Care Select Sector SPDR", type: "ETF", region: "USA", sector: "Santé" },
+  { ticker: "ICLN", name: "iShares Global Clean Energy", type: "ETF", region: "Monde", sector: "Énergie" },
+  { ticker: "SMH", name: "VanEck Semiconductor ETF", type: "ETF", region: "Monde", sector: "Technologie" },
+  { ticker: "PHAG.L", name: "WisdomTree Physical Silver", type: "ETF", region: "Monde", sector: "Matières premières" },
+  { ticker: "PHAU.L", name: "WisdomTree Physical Gold", type: "ETF", region: "Monde", sector: "Matières premières" },
+  { ticker: "GLD", name: "SPDR Gold Shares", type: "ETF", region: "Monde", sector: "Matières premières" },
+  { ticker: "AGGH.PA", name: "iShares Core Global Aggregate Bond", type: "ETF", region: "Monde", sector: "Obligations" },
+  { ticker: "C40.PA", name: "Amundi CAC 40", type: "ETF", region: "Europe", sector: "Diversifié" },
+  { ticker: "EXS1.DE", name: "iShares Core DAX", type: "ETF", region: "Europe", sector: "Diversifié" },
+];

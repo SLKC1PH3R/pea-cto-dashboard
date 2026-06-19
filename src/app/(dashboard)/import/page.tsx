@@ -5,8 +5,8 @@ import { ImportDropzone } from "@/components/import/ImportDropzone";
 import { ManualTransactionForm } from "@/components/import/ManualTransactionForm";
 import { DcaRuleForm } from "@/components/import/DcaRuleForm";
 import { AccountManager } from "@/components/import/AccountManager";
+import { DashboardNav } from "@/components/dashboard/DashboardNav";
 import { PALETTE } from "@/components/dashboard/atelier-data";
-import Link from "next/link";
 
 export default async function ImportPage() {
   const session = await auth();
@@ -26,14 +26,12 @@ export default async function ImportPage() {
       style={{ ...PALETTE.dark, background: "var(--bg)", color: "var(--fg)", fontFamily: "var(--font-body, 'Plus Jakarta Sans', system-ui)" }}
     >
       <div className="mx-auto max-w-2xl">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-[19px] font-extrabold tracking-tight text-[var(--fg)]">Ajouter des transactions</h1>
             <p className="text-[13px] text-[var(--fg2)]">Par import PDF ou saisie manuelle</p>
           </div>
-          <Link href="/dashboard" className="text-[13px] text-[var(--fg2)] hover:text-[var(--fg)]">
-            ← Retour au dashboard
-          </Link>
+          <DashboardNav />
         </div>
 
         <div className="flex flex-col gap-6">

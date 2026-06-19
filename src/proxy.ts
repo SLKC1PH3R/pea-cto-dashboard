@@ -13,9 +13,14 @@ export default auth((req) => {
   const isProtected =
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/import") ||
+    pathname.startsWith("/portefeuille") ||
+    pathname.startsWith("/marches") ||
+    pathname.startsWith("/objectifs") ||
     pathname.startsWith("/api/portfolio") ||
     pathname.startsWith("/api/accounts") ||
-    pathname.startsWith("/api/onboarding");
+    pathname.startsWith("/api/onboarding") ||
+    pathname.startsWith("/api/watchlist") ||
+    pathname.startsWith("/api/goal");
 
   if (isProtected && !isLoggedIn) {
     const loginUrl = new URL("/login", req.url);
@@ -42,11 +47,16 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/import/:path*",
+    "/portefeuille/:path*",
+    "/marches/:path*",
+    "/objectifs/:path*",
     "/login",
     "/register",
     "/onboarding",
     "/api/portfolio/:path*",
     "/api/accounts/:path*",
     "/api/onboarding",
+    "/api/watchlist",
+    "/api/goal",
   ],
 };
