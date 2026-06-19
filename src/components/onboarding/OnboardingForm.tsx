@@ -2,6 +2,7 @@
 
 import { useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 type AccountType = "PEA" | "CTO";
 
@@ -12,6 +13,7 @@ const ACCOUNT_OPTIONS: { value: AccountType; label: string; description: string 
 
 export function OnboardingForm() {
   const router = useRouter();
+  const { update } = useSession();
 
   const [name, setName] = useState("");
   const [accountTypes, setAccountTypes] = useState<AccountType[]>([]);
@@ -69,6 +71,11 @@ export function OnboardingForm() {
       setError("Une erreur est survenue, réessaie.");
       return;
     }
+
+    // Rafraîchit le JWT (la session est en stratégie JWT, donc le flag
+    // `onboarded` mis à jour côté base ne sera pas vu tant que le token
+    // n'est pas explicitement rafraîchi) avant de rediriger.
+    await update({ onboarded: true });
 
     router.push("/dashboard");
     router.refresh();
