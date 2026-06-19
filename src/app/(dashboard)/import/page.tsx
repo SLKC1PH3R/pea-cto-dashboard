@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { ImportDropzone } from "@/components/import/ImportDropzone";
 import { ManualTransactionForm } from "@/components/import/ManualTransactionForm";
 import { DcaRuleForm } from "@/components/import/DcaRuleForm";
+import { AccountManager } from "@/components/import/AccountManager";
+import { PALETTE } from "@/components/dashboard/atelier-data";
 import Link from "next/link";
 
 export default async function ImportPage() {
@@ -19,52 +21,57 @@ export default async function ImportPage() {
   });
 
   return (
-    <main className="min-h-screen p-6" style={{ background: "#ece2cf" }}>
+    <main
+      className="min-h-screen p-6"
+      style={{ ...PALETTE.dark, background: "var(--bg)", color: "var(--fg)", fontFamily: "var(--font-body, 'Plus Jakarta Sans', system-ui)" }}
+    >
       <div className="mx-auto max-w-2xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="font-serif text-2xl text-[#2b2620]">Ajouter des transactions</h1>
-            <p className="text-sm text-[#8a7a5f]">Par import PDF ou saisie manuelle</p>
+            <h1 className="text-[19px] font-extrabold tracking-tight text-[var(--fg)]">Ajouter des transactions</h1>
+            <p className="text-[13px] text-[var(--fg2)]">Par import PDF ou saisie manuelle</p>
           </div>
-          <Link href="/dashboard" className="text-sm text-[#8a7a5f] hover:underline">
+          <Link href="/dashboard" className="text-[13px] text-[var(--fg2)] hover:text-[var(--fg)]">
             ← Retour au dashboard
           </Link>
         </div>
 
-        {accounts.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#d8cbb0] bg-[#fbf8f1] p-8 text-center">
-            <p className="text-sm text-[#6b5f48]">
-              Tu n'as pas encore de compte. Crée d'abord un compte (PEA ou CTO) avant d'ajouter des transactions.
+        <div className="flex flex-col gap-6">
+          <AccountManager accounts={accounts} />
+
+          {accounts.length === 0 ? (
+            <p className="text-[13px] text-[var(--fg2)]">
+              Crée un compte ci-dessus pour pouvoir importer un PDF, saisir une transaction ou créer un plan DCA.
             </p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-6">
-            <section className="rounded-2xl border border-[#d8cbb0] bg-[#fbf8f1] p-6">
-              <h2 className="mb-1 font-serif text-lg text-[#2b2620]">Import PDF</h2>
-              <p className="mb-4 text-xs text-[#8a7a5f]">
-                Confirmations Boursorama — glisse-dépose plusieurs fichiers à la fois
-              </p>
-              <ImportDropzone accounts={accounts} />
-            </section>
+          ) : (
+            <>
+              <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+                <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Import PDF</h2>
+                <p className="mb-4 text-[12.5px] text-[var(--fg2)]">
+                  Confirmations Boursorama — glisse-dépose plusieurs fichiers à la fois
+                </p>
+                <ImportDropzone accounts={accounts} />
+              </section>
 
-            <section className="rounded-2xl border border-[#d8cbb0] bg-[#fbf8f1] p-6">
-              <h2 className="mb-1 font-serif text-lg text-[#2b2620]">Saisie manuelle</h2>
-              <p className="mb-4 text-xs text-[#8a7a5f]">
-                Pour les transactions Trade Republic ou tout actif non couvert par l'import PDF
-              </p>
-              <ManualTransactionForm accounts={accounts} />
-            </section>
+              <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+                <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Saisie manuelle</h2>
+                <p className="mb-4 text-[12.5px] text-[var(--fg2)]">
+                  Pour les transactions Trade Republic ou tout actif non couvert par l'import PDF
+                </p>
+                <ManualTransactionForm accounts={accounts} />
+              </section>
 
-            <section className="rounded-2xl border border-[#d8cbb0] bg-[#fbf8f1] p-6">
-              <h2 className="mb-1 font-serif text-lg text-[#2b2620]">Plan d'investissement programmé (DCA)</h2>
-              <p className="mb-4 text-xs text-[#8a7a5f]">
-                Pour les plans récurrents Trade Republic — génère automatiquement les exécutions
-                passées en projection
-              </p>
-              <DcaRuleForm accounts={accounts} />
-            </section>
-          </div>
-        )}
+              <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+                <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Plan d&apos;investissement programmé (DCA)</h2>
+                <p className="mb-4 text-[12.5px] text-[var(--fg2)]">
+                  Pour les plans récurrents Trade Republic — génère automatiquement les exécutions
+                  passées en projection
+                </p>
+                <DcaRuleForm accounts={accounts} />
+              </section>
+            </>
+          )}
+        </div>
       </div>
     </main>
   );

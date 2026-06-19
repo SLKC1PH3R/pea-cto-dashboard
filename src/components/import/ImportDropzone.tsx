@@ -117,11 +117,12 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <label className="mb-1 block text-sm text-[#6b5f48]">Compte cible</label>
+        <label className="mb-1 block text-sm text-[var(--fg2)]">Compte cible</label>
         <select
           value={selectedAccountId}
           onChange={(e) => setSelectedAccountId(e.target.value)}
-          className="w-full max-w-sm rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
+          className="w-full max-w-sm rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2"
+          style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
         >
           {accounts.length === 0 && <option value="">Aucun compte — crée-en un d'abord</option>}
           {accounts.map((a) => (
@@ -140,11 +141,11 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         onClick={() => inputRef.current?.click()}
-        className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-12 text-center transition ${
-          dragOver
-            ? "border-[#c87a4d] bg-[#f3ecdd]"
-            : "border-[#d8cbb0] bg-[#fbf8f1] hover:bg-[#f3ecdd]"
-        }`}
+        className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-12 text-center transition"
+        style={{
+          borderColor: dragOver ? "var(--accent)" : "var(--line)",
+          background: dragOver ? "var(--panel2)" : "var(--bg2)",
+        }}
       >
         <input
           ref={inputRef}
@@ -155,14 +156,14 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
           onChange={(e) => e.target.files && handleFiles(e.target.files)}
         />
         <span className="text-3xl">📄</span>
-        <p className="text-sm font-medium text-[#2b2620]">
+        <p className="text-sm font-medium text-[var(--fg)]">
           Glisse-dépose tes confirmations PDF Boursorama ici
         </p>
-        <p className="text-xs text-[#a8997d]">ou clique pour sélectionner plusieurs fichiers</p>
+        <p className="text-xs text-[var(--fg3)]">ou clique pour sélectionner plusieurs fichiers</p>
       </div>
 
       {uploading && (
-        <p className="text-sm text-[#8a7a5f]">Import en cours…</p>
+        <p className="text-sm text-[var(--fg2)]">Import en cours…</p>
       )}
 
       {results && (
@@ -170,22 +171,20 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
           {results.map((r, i) => (
             <div
               key={i}
-              className={`rounded-lg border p-3 text-sm ${
-                r.status === "ok"
-                  ? "border-green-200 bg-green-50"
-                  : r.status === "warning"
-                  ? "border-amber-200 bg-amber-50"
-                  : "border-red-200 bg-red-50"
-              }`}
+              className="rounded-lg border p-3 text-sm"
+              style={{
+                borderColor: r.status === "ok" ? "var(--pos)" : r.status === "warning" ? "var(--accent2)" : "var(--neg)",
+                background: r.status === "ok" ? "var(--posbg)" : r.status === "warning" ? "var(--panel2)" : "var(--negbg)",
+              }}
             >
               <div className="flex items-center justify-between">
-                <span className="font-medium text-[#2b2620]">{r.filename}</span>
-                <span className="text-xs uppercase text-[#a8997d]">{r.status}</span>
+                <span className="font-medium text-[var(--fg)]">{r.filename}</span>
+                <span className="text-xs uppercase text-[var(--fg3)]">{r.status}</span>
               </div>
-              <div className="mt-1 text-xs text-[#6b5f48]">
+              <div className="mt-1 text-xs text-[var(--fg2)]">
                 {r.transactionsCreated} transaction(s) · {r.depositsCreated} dépôt(s) créé(s)
               </div>
-              {r.message && <p className="mt-1 text-xs text-[#a14f3f]">{r.message}</p>}
+              {r.message && <p className="mt-1 text-xs" style={{ color: "var(--neg)" }}>{r.message}</p>}
             </div>
           ))}
         </div>

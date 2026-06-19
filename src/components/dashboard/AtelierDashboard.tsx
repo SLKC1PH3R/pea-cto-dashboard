@@ -7,7 +7,7 @@
 // Styling : Tailwind (classes utilitaires) + variables CSS de thème.
 // ============================================================
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   type DashboardData,
@@ -38,6 +38,21 @@ export function AtelierDashboard({
   const [period, setPeriod] = useState<Period>("1A");
   const [sortKey, setSortKey] = useState<SortKey>("value");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  const isEmpty = data.positions.length === 0 && data.cash <= 0;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setBannerDismissed(window.localStorage.getItem("folio_empty_banner_dismissed") === "1");
+  }, []);
+
+  function dismissBanner() {
+    setBannerDismissed(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("folio_empty_banner_dismissed", "1");
+    }
+  }
 
   // ── Dérivés ──────────────────────────────────────────────
   const positions = useMemo(() => {
@@ -152,6 +167,37 @@ export function AtelierDashboard({
             </div>
           </div>
         </header>
+
+        {/* Bandeau "aucune donnée" — dismissible */}
+        {isEmpty && !bannerDismissed && (
+          <div
+            className="mb-[18px] flex items-center justify-between gap-4 rounded-[16px] border px-5 py-4"
+            style={{ borderColor: "var(--accent)", background: "var(--panel)" }}
+          >
+            <div>
+              <p className="text-[14px] font-bold text-[var(--fg)]">Aucun compte pour l'instant</p>
+              <p className="text-[12.5px] text-[var(--fg2)]">
+                Ajoute un PEA ou un CTO depuis l'import pour commencer à suivre ton patrimoine.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/import"
+                className="rounded-[11px] px-4 py-[9px] text-[13px] font-semibold text-white"
+                style={{ background: "linear-gradient(140deg, var(--accent), var(--accent2))" }}
+              >
+                Aller à l'import
+              </Link>
+              <button
+                onClick={dismissBanner}
+                aria-label="Fermer"
+                className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[16px] text-[var(--fg2)] hover:bg-[var(--panel2)] hover:text-[var(--fg)]"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Bento grid */}
         <div className="grid grid-cols-12 items-stretch gap-[18px]">
@@ -447,6 +493,26 @@ export function AtelierDashboard({
           </section>
         </div>
       </div>
+
+      {isEmpty && bannerDismissed && (
+        <div className="fixed inset-x-0 bottom-0 z-10 flex items-center justify-center px-4 pb-4">
+          <div
+            className="flex items-center gap-3 rounded-full border px-4 py-[9px]"
+            style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}
+          >
+            <span className="text-[12.5px] text-[var(--fg2)]">
+              Pense à importer ou saisir tes données pour suivre ton patrimoine.
+            </span>
+            <Link
+              href="/import"
+              className="rounded-full px-3 py-[5px] text-[12px] font-semibold text-white"
+              style={{ background: "linear-gradient(140deg, var(--accent), var(--accent2))" }}
+            >
+              Importer
+            </Link>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -77,12 +77,11 @@ export function ManualTransactionForm({ accounts }: ManualTransactionFormProps) 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <div>
-        <label className="mb-1 block text-sm text-[#6b5f48]">Compte</label>
+        <label className="mb-1 block text-sm text-[var(--fg2)]">Compte</label>
         <select
           value={accountId}
           onChange={(e) => setAccountId(e.target.value)}
-          className="w-full rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
-        >
+          className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}        >
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name} ({a.type}{a.broker ? ` — ${a.broker}` : ""})
@@ -93,35 +92,32 @@ export function ManualTransactionForm({ accounts }: ManualTransactionFormProps) 
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-sm text-[#6b5f48]">Ticker</label>
+          <label className="mb-1 block text-sm text-[var(--fg2)]">Ticker</label>
           <input
             required
             value={ticker}
             onChange={(e) => setTicker(e.target.value)}
             placeholder="ex: AAPL, CW8.PA"
-            className="w-full rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
-          />
+            className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}          />
         </div>
         <div>
-          <label className="mb-1 block text-sm text-[#6b5f48]">Nom de l'actif</label>
+          <label className="mb-1 block text-sm text-[var(--fg2)]">Nom de l'actif</label>
           <input
             required
             value={assetName}
             onChange={(e) => setAssetName(e.target.value)}
             placeholder="ex: Apple Inc."
-            className="w-full rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
-          />
+            className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}          />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-sm text-[#6b5f48]">Type d'actif</label>
+          <label className="mb-1 block text-sm text-[var(--fg2)]">Type d'actif</label>
           <select
             value={assetType}
             onChange={(e) => setAssetType(e.target.value)}
-            className="w-full rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
-          >
+            className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}          >
             {ASSET_TYPES.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
@@ -130,12 +126,11 @@ export function ManualTransactionForm({ accounts }: ManualTransactionFormProps) 
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-sm text-[#6b5f48]">Devise</label>
+          <label className="mb-1 block text-sm text-[var(--fg2)]">Devise</label>
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
-            className="w-full rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
-          >
+            className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}          >
             <option value="EUR">EUR</option>
             <option value="USD">USD</option>
           </select>
@@ -144,65 +139,60 @@ export function ManualTransactionForm({ accounts }: ManualTransactionFormProps) 
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-sm text-[#6b5f48]">Sens</label>
+          <label className="mb-1 block text-sm text-[var(--fg2)]">Sens</label>
           <select
             value={type}
             onChange={(e) => setType(e.target.value)}
-            className="w-full rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
-          >
+            className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}          >
             <option value="BUY">Achat</option>
             <option value="SELL">Vente</option>
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-sm text-[#6b5f48]">Date</label>
+          <label className="mb-1 block text-sm text-[var(--fg2)]">Date</label>
           <input
             type="date"
             required
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
-          />
+            className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}          />
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="mb-1 block text-sm text-[#6b5f48]">Quantité</label>
+          <label className="mb-1 block text-sm text-[var(--fg2)]">Quantité</label>
           <input
             type="number"
             step="any"
             required
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
-            className="w-full rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
-          />
+            className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}          />
         </div>
         <div>
-          <label className="mb-1 block text-sm text-[#6b5f48]">Prix unitaire</label>
+          <label className="mb-1 block text-sm text-[var(--fg2)]">Prix unitaire</label>
           <input
             type="number"
             step="any"
             required
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            className="w-full rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
-          />
+            className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}          />
         </div>
         <div>
-          <label className="mb-1 block text-sm text-[#6b5f48]">Frais</label>
+          <label className="mb-1 block text-sm text-[var(--fg2)]">Frais</label>
           <input
             type="number"
             step="any"
             value={fees}
             onChange={(e) => setFees(e.target.value)}
-            className="w-full rounded-md border border-[#d8cbb0] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c87a4d]"
-          />
+            className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}          />
         </div>
       </div>
 
       {feedback && (
-        <p className={`text-sm ${feedback.type === "ok" ? "text-[#5b7a4f]" : "text-[#a14f3f]"}`}>
+        <p className="text-sm" style={{ color: feedback.type === "ok" ? "var(--pos)" : "var(--neg)" }}>
           {feedback.message}
         </p>
       )}
@@ -210,7 +200,8 @@ export function ManualTransactionForm({ accounts }: ManualTransactionFormProps) 
       <button
         type="submit"
         disabled={submitting || accounts.length === 0}
-        className="mt-1 rounded-md bg-[#c87a4d] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        className="mt-1 rounded-[10px] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        style={{ background: "linear-gradient(140deg, var(--accent), var(--accent2))" }}
       >
         {submitting ? "Ajout…" : "Ajouter la transaction"}
       </button>

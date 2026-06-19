@@ -11,7 +11,6 @@ import type {
   Mover,
   Transaction as AtelierTx,
 } from "@/components/dashboard/atelier-data";
-import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -60,32 +59,6 @@ export default async function DashboardPage() {
   async function handleSignOut() {
     "use server";
     await signOut({ redirectTo: "/login" });
-  }
-
-  if (accounts.length === 0) {
-    return (
-      <main
-        className="flex min-h-screen items-center justify-center px-4"
-        style={{ background: "#0e0c16", color: "#f0edf8", fontFamily: "var(--font-body, 'Plus Jakarta Sans', system-ui)" }}
-      >
-        <div
-          className="w-full max-w-md rounded-[22px] border p-8 text-center"
-          style={{ borderColor: "rgba(255,255,255,.07)", background: "#1a1628" }}
-        >
-          <h1 className="mb-2 text-[19px] font-extrabold text-[#f0edf8]">Aucun compte pour l'instant</h1>
-          <p className="mb-6 text-[13px] text-[#a79fbd]">
-            Ajoute un PEA ou un CTO depuis l'import pour commencer à suivre ton patrimoine.
-          </p>
-          <Link
-            href="/import"
-            className="inline-block rounded-[11px] px-4 py-[10px] text-[13px] font-semibold text-white"
-            style={{ background: "linear-gradient(140deg, #9d7bf5, #c9b6fb)" }}
-          >
-            Aller à l'import
-          </Link>
-        </div>
-      </main>
-    );
   }
 
   // ── Positions : quantité/PRU/valeur réels, prix courant via Finnhub si
