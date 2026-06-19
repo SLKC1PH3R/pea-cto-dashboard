@@ -6,7 +6,7 @@ type Account = {
   id: string;
   name: string;
   type: string;
-  broker: string;
+  broker: string | null;
 };
 
 type ImportFileResult = {
@@ -126,7 +126,7 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
           {accounts.length === 0 && <option value="">Aucun compte — crée-en un d'abord</option>}
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name} ({a.type} — {a.broker})
+              {a.name} ({a.type}{a.broker ? ` — ${a.broker}` : ""})
             </option>
           ))}
         </select>

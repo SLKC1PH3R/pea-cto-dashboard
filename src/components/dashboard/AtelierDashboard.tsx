@@ -8,6 +8,7 @@
 // ============================================================
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   type DashboardData,
   type Period,
@@ -59,19 +60,16 @@ export function AtelierDashboard({
 
   const chart = useMemo(() => buildEvolution(data.evo, period), [data.evo, period]);
   const donut = useMemo(() => buildDonut(data.alloc), [data.alloc]);
-  const goalPct = (data.total / data.goal) * 100;
+  const goalPct = data.goal ? (data.total / data.goal) * 100 : 0;
   const ringDash = useMemo(() => buildRing(goalPct), [goalPct]);
   const pl = data.total - data.invested;
 
   const perfBars = useMemo(() => {
     const raw = [
       { label: "Aujourd'hui", pct: data.dayPct },
-      { label: "Ce mois", pct: data.monthPct },
-      { label: "YTD", pct: data.ytdPct },
-      { label: "1 an", pct: data.yearPct },
-      { label: "3 ans", pct: data.threeYearPct },
+      { label: "Total", pct: data.totalPnlPct * 100 },
     ];
-    const maxAbs = Math.max(...raw.map((r) => Math.abs(r.pct)));
+    const maxAbs = Math.max(...raw.map((r) => Math.abs(r.pct)), 0.01);
     return raw.map((r) => ({ ...r, width: (Math.abs(r.pct) / maxAbs) * 100, pos: r.pct >= 0 }));
   }, [data]);
 
@@ -109,11 +107,12 @@ export function AtelierDashboard({
             </div>
             <nav className="flex gap-1 rounded-2xl border border-[var(--line)] bg-[var(--panel2)] p-[5px]">
               <span className="rounded-[10px] bg-[var(--accent)] px-[15px] py-[7px] text-[13px] font-semibold text-white">Synthèse</span>
-              {["Portefeuille", "Marchés", "Objectifs"].map((t) => (
-                <span key={t} className="cursor-pointer rounded-[10px] px-[15px] py-[7px] text-[13px] font-medium text-[var(--fg2)] hover:text-[var(--fg)]">
-                  {t}
-                </span>
-              ))}
+              <Link
+                href="/import"
+                className="rounded-[10px] px-[15px] py-[7px] text-[13px] font-medium text-[var(--fg2)] hover:text-[var(--fg)]"
+              >
+                Importer
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-[14px]">
@@ -186,9 +185,12 @@ export function AtelierDashboard({
           <section className="col-span-8 rounded-[22px] border border-[var(--line)] bg-[var(--panel)] px-[26px] py-6" style={{ boxShadow: "var(--shadow)" }}>
             <div className="mb-[14px] flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-[17px] font-bold text-[var(--fg)]">Évolution du patrimoine</h2>
+                <h2 className="text-[17px] font-bold text-[var(--fg)]">Capital versé</h2>
                 <span className="text-[12.5px] text-[var(--fg2)]">
-                  12 derniers mois · <span className="font-semibold text-[var(--pos)]">{signPct(data.ytdPct)}</span>
+                  Performance totale ·{" "}
+                  <span className={pl >= 0 ? "font-semibold text-[var(--pos)]" : "font-semibold text-[var(--neg)]"}>
+                    {signPct(data.totalPnlPct * 100)}
+                  </span>
                 </span>
               </div>
               <div className="flex gap-1 rounded-[11px] border border-[var(--line)] bg-[var(--panel2)] p-1">
@@ -298,28 +300,40 @@ export function AtelierDashboard({
           {/* Objectif */}
           <section className="col-span-4 rounded-[22px] border border-[var(--line)] bg-[var(--panel)] p-6" style={{ boxShadow: "var(--shadow)" }}>
             <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Objectif</h2>
-            <span className="text-[12.5px] text-[var(--fg2)]">Cible {eur(data.goal)}</span>
-            <div className="mt-[14px] flex items-center gap-[18px]">
-              <div className="relative h-24 w-24 flex-none">
-                <svg width="96" height="96" viewBox="0 0 120 120">
-                  <circle cx="60" cy="60" r="52" fill="none" stroke="var(--track)" strokeWidth="12" />
-                  <circle cx="60" cy="60" r="52" fill="none" style={{ stroke: "var(--accent)" }} strokeWidth="12" strokeLinecap="round" strokeDasharray={ringDash} transform="rotate(-90 60 60)" />
-                </svg>
-                <div style={num} className="absolute inset-0 flex items-center justify-center text-[18px] font-bold text-[var(--fg)]">
-                  {nf(goalPct, 1)} %
+            {data.goal ? (
+              <>
+                <span className="text-[12.5px] text-[var(--fg2)]">Cible {eur(data.goal)}</span>
+                <div className="mt-[14px] flex items-center gap-[18px]">
+                  <div className="relative h-24 w-24 flex-none">
+                    <svg width="96" height="96" viewBox="0 0 120 120">
+                      <circle cx="60" cy="60" r="52" fill="none" stroke="var(--track)" strokeWidth="12" />
+                      <circle cx="60" cy="60" r="52" fill="none" style={{ stroke: "var(--accent)" }} strokeWidth="12" strokeLinecap="round" strokeDasharray={ringDash} transform="rotate(-90 60 60)" />
+                    </svg>
+                    <div style={num} className="absolute inset-0 flex items-center justify-center text-[18px] font-bold text-[var(--fg)]">
+                      {nf(goalPct, 1)} %
+                    </div>
+                  </div>
+                  <div className="flex flex-1 flex-col gap-[11px]">
+                    <div className="flex flex-col">
+                      <span className="text-[11.5px] text-[var(--fg2)]">Reste à atteindre</span>
+                      <span style={num} className="text-[17px] font-bold text-[var(--fg)]">{eur(data.goal - data.total)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[11.5px] text-[var(--fg2)]">Frais annuels · {nf(data.fees.rate, 2)} %</span>
+                      <span style={num} className="text-[17px] font-bold text-[var(--fg)]">{eur(data.fees.annual)}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-1 flex-col gap-[11px]">
-                <div className="flex flex-col">
-                  <span className="text-[11.5px] text-[var(--fg2)]">Reste à atteindre</span>
-                  <span style={num} className="text-[17px] font-bold text-[var(--fg)]">{eur(data.goal - data.total)}</span>
-                </div>
-                <div className="flex flex-col">
+              </>
+            ) : (
+              <div className="mt-[14px] flex flex-col gap-3">
+                <span className="text-[12.5px] text-[var(--fg2)]">Tu n'as pas encore défini d'objectif de patrimoine.</span>
+                <div className="flex flex-col gap-1">
                   <span className="text-[11.5px] text-[var(--fg2)]">Frais annuels · {nf(data.fees.rate, 2)} %</span>
                   <span style={num} className="text-[17px] font-bold text-[var(--fg)]">{eur(data.fees.annual)}</span>
                 </div>
               </div>
-            </div>
+            )}
           </section>
 
           {/* Positions */}

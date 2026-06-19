@@ -37,11 +37,8 @@ export async function POST(req: NextRequest) {
 
   const { name, type, broker, currency, openedAt } = body;
 
-  if (!name || !type || !broker || !openedAt) {
-    return NextResponse.json(
-      { error: "Champs requis: name, type, broker, openedAt" },
-      { status: 400 }
-    );
+  if (!name || !type) {
+    return NextResponse.json({ error: "Champs requis: name, type" }, { status: 400 });
   }
 
   const account = await prisma.account.create({
@@ -49,9 +46,9 @@ export async function POST(req: NextRequest) {
       userId: session.user.id,
       name,
       type,
-      broker,
+      broker: broker ?? null,
       currency: currency ?? "EUR",
-      openedAt: new Date(openedAt),
+      ...(openedAt ? { openedAt: new Date(openedAt) } : {}),
     },
   });
 

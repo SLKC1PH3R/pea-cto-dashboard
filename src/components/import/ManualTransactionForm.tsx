@@ -6,7 +6,7 @@ type Account = {
   id: string;
   name: string;
   type: string;
-  broker: string;
+  broker: string | null;
 };
 
 type ManualTransactionFormProps = {
@@ -85,7 +85,7 @@ export function ManualTransactionForm({ accounts }: ManualTransactionFormProps) 
         >
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name} ({a.type} — {a.broker})
+              {a.name} ({a.type}{a.broker ? ` — ${a.broker}` : ""})
             </option>
           ))}
         </select>

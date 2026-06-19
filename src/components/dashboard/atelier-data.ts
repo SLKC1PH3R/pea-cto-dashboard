@@ -20,7 +20,6 @@ export interface Position {
   pru: number;
   price: number;
   day: number; // variation jour en %
-  ytd: number; // variation YTD en %
 }
 
 export interface Mover {
@@ -43,87 +42,17 @@ export interface DashboardData {
   invested: number;
   dayAbs: number;
   dayPct: number;
-  monthPct: number;
-  ytdPct: number;
-  yearPct: number;
-  threeYearPct: number;
+  totalPnlPct: number; // performance globale depuis le début (réel, pas de période glissante)
   fees: { annual: number; rate: number; items: { label: string; amount: number }[] };
   cash: number;
-  goal: number;
-  evo: number[]; // valeurs mensuelles en k€ (plus ancien → plus récent)
+  goal: number | null;
+  evo: number[]; // capital versé cumulé, par mois (plus ancien → plus récent)
   alloc: AllocSlice[];
   positions: Position[];
   gainers: Mover[];
   losers: Mover[];
   tx: Transaction[];
   dateLabel: string;
-}
-
-// ── Données de démonstration ────────────────────────────────
-// TODO : remplacer par vos vraies requêtes (Prisma / API). La forme ci-dessous
-// est tout ce dont le composant a besoin.
-export function buildDashboardData(overrides: Partial<DashboardData> = {}): DashboardData {
-  return {
-    email: "camille.laurent@aurum-patrimoine.fr",
-    name: "Camille",
-    total: 1248320,
-    invested: 1043500,
-    dayAbs: 10412,
-    dayPct: 0.84,
-    monthPct: 3.21,
-    ytdPct: 12.74,
-    yearPct: 18.24,
-    threeYearPct: 34.6,
-    fees: {
-      annual: 4280,
-      rate: 0.34,
-      items: [
-        { label: "Frais de gestion", amount: 2980 },
-        { label: "Courtage", amount: 860 },
-        { label: "Droits de garde", amount: 440 },
-      ],
-    },
-    cash: 86500,
-    goal: 1500000,
-    evo: [962, 988, 1002, 985, 1024, 1058, 1039, 1086, 1112, 1097, 1141, 1129, 1168, 1156, 1197, 1212, 1235, 1248],
-    alloc: [
-      { label: "Actions", pct: 42, color: "#a78bfa" },
-      { label: "ETF", pct: 17, color: "#c9b6fb" },
-      { label: "Obligations", pct: 16, color: "#6ea8c9" },
-      { label: "Immobilier", pct: 11, color: "#c9a978" },
-      { label: "Crypto", pct: 8, color: "#5fb89a" },
-      { label: "Liquidités", pct: 6, color: "#8f8799" },
-    ],
-    positions: [
-      { name: "LVMH", ticker: "MC.PA", cls: "Actions", qty: 120, pru: 560.0, price: 642.3, day: 1.24, ytd: 8.4 },
-      { name: "ASML Holding", ticker: "ASML", cls: "Actions", qty: 60, pru: 712.5, price: 890.1, day: 2.08, ytd: 21.3 },
-      { name: "TotalEnergies", ticker: "TTE.PA", cls: "Actions", qty: 800, pru: 58.4, price: 61.2, day: -0.42, ytd: 5.12 },
-      { name: "Apple", ticker: "AAPL", cls: "Actions", qty: 300, pru: 182.3, price: 214.5, day: 0.64, ytd: 14.2 },
-      { name: "iShares MSCI World", ticker: "IWDA", cls: "ETF", qty: 950, pru: 84.6, price: 102.8, day: 0.51, ytd: 16.8 },
-      { name: "OAT France 2031", ticker: "FR0014", cls: "Obligations", qty: 1200, pru: 99.2, price: 101.1, day: 0.08, ytd: 2.31 },
-      { name: "Bitcoin", ticker: "BTC", cls: "Crypto", qty: 1.4, pru: 41200, price: 58200, day: 3.42, ytd: 41.2 },
-      { name: "SCPI Primovie", ticker: "SCPI", cls: "Immobilier", qty: 480, pru: 196.0, price: 200.0, day: 0.0, ytd: 3.9 },
-    ],
-    gainers: [
-      { name: "Bitcoin", pct: 3.42 },
-      { name: "ASML Holding", pct: 2.08 },
-      { name: "LVMH", pct: 1.24 },
-    ],
-    losers: [
-      { name: "Renault", pct: -1.12 },
-      { name: "Orange", pct: -0.63 },
-      { name: "TotalEnergies", pct: -0.42 },
-    ],
-    tx: [
-      { label: "Achat — ASML Holding", sub: "10 titres · 890,10 €", amount: -8901, date: "17 juin", type: "buy" },
-      { label: "Dividende — TotalEnergies", sub: "Coupon trimestriel", amount: 740, date: "15 juin", type: "div" },
-      { label: "Vente — Apple", sub: "50 titres · 214,50 €", amount: 10725, date: "12 juin", type: "sell" },
-      { label: "Versement programmé", sub: "Virement SEPA", amount: 5000, date: "01 juin", type: "in" },
-      { label: "Frais de gestion", sub: "Prélèvement mensuel", amount: -248, date: "01 juin", type: "fee" },
-    ],
-    dateLabel: "18 juin 2026",
-    ...overrides,
-  };
 }
 
 // ── Formatage ────────────────────────────────────────────────

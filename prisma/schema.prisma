@@ -10,20 +10,39 @@ datasource db {
 }
 
 // ============================================================
-// UTILISATEUR (auth email/password)
+// UTILISATEUR (auth email/password ou Google)
 // ============================================================
 
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
-  passwordHash  String
+  // Null pour les comptes créés via Google (pas de mot de passe local)
+  passwordHash  String?
   name          String?
+  onboarded     Boolean   @default(false)
+  goalAmount    Decimal?  @db.Decimal(18, 2)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   accounts        Account[]
   dashboardLayouts DashboardLayout[]
   dcaRules        DcaRule[]
+  watchlistItems  WatchlistItem[]
+}
+
+// ============================================================
+// LISTE DE SUIVI (actions/ETF à suivre sans forcément les détenir)
+// ============================================================
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticker    String
+  name      String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, ticker])
 }
 
 // ============================================================
@@ -46,9 +65,9 @@ model Account {
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String // ex: "PEA Boursorama"
   type      AccountType
-  broker    Broker
+  broker    Broker? // précisé plus tard, depuis la page d'import
   currency  String      @default("EUR")
-  openedAt  DateTime
+  openedAt  DateTime   @default(now())
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 

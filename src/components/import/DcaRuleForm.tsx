@@ -6,7 +6,7 @@ type Account = {
   id: string;
   name: string;
   type: string;
-  broker: string;
+  broker: string | null;
 };
 
 type DcaRuleFormProps = {
@@ -74,7 +74,7 @@ export function DcaRuleForm({ accounts }: DcaRuleFormProps) {
         >
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name} ({a.type} — {a.broker})
+              {a.name} ({a.type}{a.broker ? ` — ${a.broker}` : ""})
             </option>
           ))}
         </select>
