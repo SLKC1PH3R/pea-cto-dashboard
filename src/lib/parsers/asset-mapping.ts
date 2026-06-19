@@ -63,6 +63,36 @@ export const KNOWN_ASSETS: KnownAsset[] = [
     region: "Monde",
     currency: "USD",
   },
+  {
+    matchFragments: ["META PLATFORMS"],
+    ticker: "META",
+    isin: "US30303M1027",
+    name: "Meta Platforms",
+    assetType: "ACTION",
+    sector: "Technologie",
+    region: "USA",
+    currency: "USD",
+  },
+  {
+    matchFragments: ["NVIDIA"],
+    ticker: "NVDA",
+    isin: "US67066G1040",
+    name: "NVIDIA",
+    assetType: "ACTION",
+    sector: "Technologie",
+    region: "USA",
+    currency: "USD",
+  },
+  {
+    matchFragments: ["TAIWAN SEMI"],
+    ticker: "TSM",
+    isin: "US8740391003",
+    name: "Taiwan Semiconductor (ADR)",
+    assetType: "ACTION",
+    sector: "Technologie",
+    region: "Asie",
+    currency: "USD",
+  },
 ];
 
 export type AssetResolution =
