@@ -1,7 +1,12 @@
 // ============================================================
 // atelier-data.ts
-// Types, données et helpers (formatage + géométrie des graphiques) pour le
-// dashboard "Atelier". Aucune dépendance — pur TypeScript.
+// Types, helpers de formatage et géométrie des graphiques pour le
+// dashboard "Atelier". Aucune donnée de démonstration : tous les champs
+// sont alimentés par de vraies données (Prisma / Finnhub) — voir
+// src/lib/dashboard-data.ts. Les métriques qu'on ne peut pas calculer
+// honnêtement (performance mensuelle/YTD/annuelle, indices de marché,
+// objectifs multiples) ont été volontairement omises plutôt que
+// fabriquées.
 // ============================================================
 
 export type Period = "1M" | "3M" | "6M" | "1A" | "Max";
@@ -15,7 +20,8 @@ export interface AllocSlice {
 export interface Position {
   name: string;
   ticker: string;
-  cls: string;
+  cls: string; // classe d'actif (Actions / ETF…)
+  sector: string; // secteur GICS approximatif
   qty: number;
   pru: number;
   price: number;
@@ -24,6 +30,7 @@ export interface Position {
 
 export interface Mover {
   name: string;
+  ticker?: string;
   pct: number;
 }
 
@@ -33,6 +40,20 @@ export interface Transaction {
   amount: number;
   date: string;
   type: "buy" | "sell" | "div" | "in" | "fee";
+}
+
+export interface Sector {
+  label: string;
+  pct: number;
+  color: string;
+}
+
+export interface WatchItem {
+  name: string;
+  ticker: string;
+  cls: string;
+  price: number;
+  day: number;
 }
 
 export interface DashboardData {
@@ -53,6 +74,10 @@ export interface DashboardData {
   losers: Mover[];
   tx: Transaction[];
   dateLabel: string;
+  // ── Portefeuille
+  sectors: Sector[];
+  // ── Marchés (basé sur la watchlist réelle de l'utilisateur, pas sur des indices fabriqués)
+  watchlist: WatchItem[];
 }
 
 // ── Formatage ────────────────────────────────────────────────
@@ -150,6 +175,57 @@ export function buildRing(pct: number, r = 52): string {
   const C = 2 * Math.PI * r;
   const filled = (Math.min(pct, 100) / 100) * C;
   return `${filled.toFixed(2)} ${(C - filled).toFixed(2)}`;
+}
+
+// ── Projection patrimoniale (capitalisation composée + versements) ──
+// Simulation explicite à partir d'hypothèses choisies par l'utilisateur
+// (taux, versement mensuel) — pas une donnée historique fabriquée.
+export interface ProjectionChart {
+  line: string;
+  area: string;
+  endValue: number;
+  goalLineY: number | null;
+  goalLabelTopPct: number | null;
+  labels: { leftPct: number; text: string }[];
+}
+
+export function buildProjection(
+  start: number,
+  goal: number | null,
+  ratePct: number,
+  monthly: number,
+  years = 10,
+  startYear = new Date().getFullYear()
+): ProjectionChart {
+  const r = ratePct / 100;
+  const proj: number[] = [];
+  let bal = start;
+  for (let y = 0; y <= years; y++) {
+    proj.push(bal);
+    bal = bal * (1 + r) + monthly * 12;
+  }
+  const W = 1000;
+  const H = 300;
+  const pad = 16;
+  const mn = Math.min(...proj);
+  const mx = Math.max(goal ?? 0, ...proj);
+  const rg = mx - mn || 1;
+  const pts: Pt[] = proj.map((v, i) => [(i / (proj.length - 1)) * W, pad + (H - pad * 2) * (1 - (v - mn) / rg)]);
+  const line = smooth(pts);
+  const area = `${line} L ${W} ${H} L 0 ${H} Z`;
+  const goalLineY = goal ? pad + (H - pad * 2) * (1 - (goal - mn) / rg) : null;
+  const labels = Array.from({ length: 6 }, (_, k) => {
+    const yr = Math.round((k * years) / 5);
+    return { leftPct: +((yr / years) * 100).toFixed(1), text: String(startYear + yr) };
+  });
+  return {
+    line,
+    area,
+    endValue: proj[proj.length - 1],
+    goalLineY: goalLineY !== null ? +goalLineY.toFixed(1) : null,
+    goalLabelTopPct: goalLineY !== null ? +((goalLineY / H) * 100).toFixed(1) : null,
+    labels,
+  };
 }
 
 // ── Palette "Atelier" (violet feutré) — variables CSS par thème ─

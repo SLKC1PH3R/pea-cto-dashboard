@@ -9,9 +9,9 @@ export default async function OnboardingPage() {
   if (!session?.user) {
     redirect("/login");
   }
-  if (session.user.onboarded) {
-    redirect("/dashboard");
-  }
+  // Le statut `onboarded` est vérifié en base par le proxy (src/proxy.ts) à
+  // chaque requête, qui redirige déjà vers /dashboard si le compte est
+  // configuré — pas de re-check ici sur le claim JWT (potentiellement périmé).
 
   return <OnboardingForm />;
 }

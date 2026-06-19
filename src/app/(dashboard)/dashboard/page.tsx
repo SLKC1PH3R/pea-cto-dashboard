@@ -10,9 +10,9 @@ export default async function DashboardPage() {
   if (!session?.user) {
     redirect("/login");
   }
-  if (!session.user.onboarded) {
-    redirect("/onboarding");
-  }
+  // Le statut `onboarded` est vérifié en base par le proxy (src/proxy.ts) à
+  // chaque requête — pas de re-check ici sur le claim JWT, qui peut rester
+  // périmé après une mise à jour du profil.
 
   const data = await getDashboardData(session.user.id, session.user.email);
 

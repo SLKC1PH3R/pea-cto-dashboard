@@ -6,6 +6,8 @@ import type {
   Position as AtelierPosition,
   AllocSlice,
   Mover,
+  Sector,
+  WatchItem,
   Transaction as AtelierTx,
 } from "@/components/dashboard/atelier-data";
 
@@ -16,6 +18,7 @@ const ASSET_TYPE_LABEL: Record<string, string> = {
 };
 
 const ALLOC_COLORS = ["#a78bfa", "#c9b6fb", "#6ea8c9", "#c9a978", "#5fb89a"];
+const SECTOR_COLORS = ["#a78bfa", "#c9b6fb", "#6ea8c9", "#c9a978", "#5fb89a", "#e0a85f", "#8f8799"];
 
 function buildMonthlyCumulativeDeposits(deposits: { amount: { toNumber(): number }; date: Date }[]): number[] {
   if (deposits.length === 0) return [0, 0];
@@ -54,6 +57,7 @@ export async function getDashboardData(userId: string, userEmail: string | null 
   let dayAbsSum = 0;
   const atelierPositions: AtelierPosition[] = [];
   const allocMap = new Map<string, number>();
+  const sectorMap = new Map<string, number>();
 
   for (const position of allPositions) {
     const txs = position.transactions.map((t) => ({
@@ -80,10 +84,14 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     const clsLabel = ASSET_TYPE_LABEL[position.asset.assetType] ?? position.asset.assetType;
     allocMap.set(clsLabel, (allocMap.get(clsLabel) ?? 0) + marketValue);
 
+    const sectorLabel = position.asset.sector ?? "Autre";
+    sectorMap.set(sectorLabel, (sectorMap.get(sectorLabel) ?? 0) + marketValue);
+
     atelierPositions.push({
       name: position.asset.name,
       ticker: position.asset.ticker,
       cls: clsLabel,
+      sector: sectorLabel,
       qty,
       pru,
       price: currentPrice,
@@ -119,6 +127,27 @@ export async function getDashboardData(userId: string, userEmail: string | null 
   if (cash > 0) {
     alloc.push({ label: "Liquidités", pct: allocTotal > 0 ? Math.round((cash / allocTotal) * 100) : 0, color: "#8f8799" });
   }
+
+  // ── Répartition sectorielle réelle (Asset.sector), par valeur de marché
+  const sectors: Sector[] = Array.from(sectorMap.entries())
+    .map(([label, value], i) => ({
+      label,
+      pct: totalValue > 0 ? Math.round((value / totalValue) * 100) : 0,
+      color: SECTOR_COLORS[i % SECTOR_COLORS.length],
+    }))
+    .sort((a, b) => b.pct - a.pct);
+
+  // ── Watchlist : cotations réelles via Finnhub pour les tickers suivis
+  const watchlistItems = await prisma.watchlistItem.findMany({ where: { userId } });
+  const watchlistTickers = watchlistItems.map((w) => w.ticker);
+  const watchlistQuotes = watchlistTickers.length > 0 ? await getQuotes(watchlistTickers) : {};
+  const watchlist: WatchItem[] = watchlistItems
+    .map((w) => {
+      const q = watchlistQuotes[w.ticker];
+      if (!q) return null;
+      return { name: w.name ?? w.ticker, ticker: w.ticker, cls: "Watchlist", price: q.c, day: q.dp };
+    })
+    .filter((w): w is WatchItem => w !== null);
 
   // ── Top hausses / baisses du jour, à partir des positions réelles
   const sortedByDay = [...atelierPositions].sort((a, b) => b.day - a.day);
@@ -189,5 +218,7 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     losers,
     tx,
     dateLabel: new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }),
+    sectors,
+    watchlist,
   };
 }
