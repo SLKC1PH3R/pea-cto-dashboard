@@ -60,12 +60,15 @@ const SELL_LABELS = ["VENTE ETRANGER", "VENTE COMPTANT"];
 const DEPOSIT_LABELS = ["VIR"]; // virements (entrants en général dans ce contexte)
 
 const DATE_RE = /(\d{2})\/(\d{2})\/(\d{4})/;
+const TIME_RE = /^(\d{2}):(\d{2}):(\d{2})$/;
 
-function parseFrDate(s: string): Date {
+function parseFrDate(s: string, timeStr?: string | null): Date {
   const m = s.match(DATE_RE);
   if (!m) throw new Error(`Date illisible: "${s}"`);
   const [, dd, mm, yyyy] = m;
-  return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  const tm = timeStr?.match(TIME_RE);
+  const [hh, min, sec] = tm ? [Number(tm[1]), Number(tm[2]), Number(tm[3])] : [0, 0, 0];
+  return new Date(Number(yyyy), Number(mm) - 1, Number(dd), hh, min, sec);
 }
 
 function parseFrAmount(s: string): number {
@@ -201,9 +204,12 @@ function parseAvisOpereFormat(text: string): ParsedBoursoramaTransaction[] {
     const txType = classify(label);
     if (txType !== "BUY" && txType !== "SELL") continue;
 
-    // Cherche la date d'exécution (ligne seule au format JJ/MM/AAAA), puis
-    // la ligne "quantité + nom de la valeur + Référence :" qui suit.
+    // Cherche la date ET l'heure d'exécution (ligne "Date et heure locale
+    // d'exécution" : la date est seule sur sa ligne, suivie de l'heure seule
+    // sur la ligne suivante — ex. "07/05/2026" puis "12:48:59"), puis la
+    // ligne "quantité + nom de la valeur + Référence :" qui suit.
     let dateStr: string | null = null;
+    let timeStr: string | null = null;
     let quantity: number | null = null;
     let assetName: string | null = null;
     let qtyLineIdx = -1;
@@ -215,6 +221,12 @@ function parseAvisOpereFormat(text: string): ParsedBoursoramaTransaction[] {
         const dm = l.match(/^(\d{2}\/\d{2}\/\d{4})$/);
         if (dm) {
           dateStr = dm[1];
+          continue;
+        }
+      } else if (!timeStr) {
+        const tm = l.match(/^(\d{2}:\d{2}:\d{2})$/);
+        if (tm) {
+          timeStr = tm[1];
           continue;
         }
       }
@@ -251,7 +263,7 @@ function parseAvisOpereFormat(text: string): ParsedBoursoramaTransaction[] {
     if (!amountStr) continue;
 
     results.push({
-      date: parseFrDate(dateStr),
+      date: parseFrDate(dateStr, timeStr),
       operationLabel: label.toUpperCase(),
       assetName,
       quantity,

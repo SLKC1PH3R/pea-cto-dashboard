@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       result.transactions = parsed.transactions.map((tx) => {
         const resolution = resolveAssetName(tx.assetName);
         return {
-          date: tx.date.toISOString().slice(0, 10),
+          date: tx.date.toISOString(),
           operationLabel: tx.operationLabel,
           assetName: tx.assetName,
           ticker: resolution.matched ? resolution.asset.ticker : null,

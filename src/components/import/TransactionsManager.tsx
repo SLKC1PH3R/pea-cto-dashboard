@@ -18,6 +18,7 @@ type TransactionRow = {
 
 export function TransactionsManager() {
   const [rows, setRows] = useState<TransactionRow[] | null>(null);
+  const [quotes, setQuotes] = useState<Record<string, number>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ quantity: string; price: string; fees: string; date: string }>({
     quantity: "",
@@ -29,12 +30,27 @@ export function TransactionsManager() {
 
   async function load() {
     const res = await fetch("/api/transactions");
-    if (res.ok) setRows(await res.json());
+    if (!res.ok) return;
+    const data: TransactionRow[] = await res.json();
+    setRows(data);
+
+    const tickers = [...new Set(data.filter((r) => r.type === "BUY").map((r) => r.assetTicker))];
+    if (tickers.length > 0) {
+      const qRes = await fetch(`/api/quotes?tickers=${encodeURIComponent(tickers.join(","))}`);
+      if (qRes.ok) {
+        const qData = await qRes.json();
+        setQuotes(Object.fromEntries(Object.entries(qData).map(([t, q]) => [t, (q as { c: number }).c])));
+      }
+    }
   }
 
   useEffect(() => {
     load();
   }, []);
+
+  function daysSince(dateStr: string): number {
+    return Math.max(0, Math.round((Date.now() - new Date(dateStr).getTime()) / 86_400_000));
+  }
 
   function startEdit(row: TransactionRow) {
     setEditingId(row.id);
@@ -85,6 +101,7 @@ export function TransactionsManager() {
             <th className="px-2 py-2 text-right text-[11px] uppercase text-[var(--fg3)]">Prix</th>
             <th className="px-2 py-2 text-right text-[11px] uppercase text-[var(--fg3)]">Frais</th>
             <th className="px-2 py-2 text-left text-[11px] uppercase text-[var(--fg3)]">Date</th>
+            <th className="px-2 py-2 text-right text-[11px] uppercase text-[var(--fg3)]">P&amp;L depuis l&apos;achat</th>
             <th className="px-3 py-2 text-right text-[11px] uppercase text-[var(--fg3)]"></th>
           </tr>
         </thead>
@@ -155,6 +172,23 @@ export function TransactionsManager() {
                   ) : (
                     <span className="text-[var(--fg2)]">{r.date}</span>
                   )}
+                </td>
+                <td className="px-2 py-2 text-right">
+                  {(() => {
+                    if (r.type !== "BUY") return <span className="text-[var(--fg3)]">—</span>;
+                    const current = quotes[r.assetTicker];
+                    if (current === undefined) return <span className="text-[var(--fg3)]">—</span>;
+                    const pl = (current - r.price) * r.quantity;
+                    const plPct = r.price > 0 ? (current / r.price - 1) * 100 : 0;
+                    return (
+                      <div className="flex flex-col items-end leading-[1.2]">
+                        <span style={{ color: pl >= 0 ? "var(--pos)" : "var(--neg)" }} className="font-bold">
+                          {pl >= 0 ? "+" : "−"}{Math.abs(pl).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} € ({plPct >= 0 ? "+" : "−"}{Math.abs(plPct).toFixed(1)} %)
+                        </span>
+                        <span className="text-[10.5px] text-[var(--fg3)]">en {daysSince(r.date)} j</span>
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td className="px-3 py-2 text-right">
                   <div className="flex justify-end gap-2">
