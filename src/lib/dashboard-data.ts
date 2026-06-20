@@ -201,6 +201,8 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     name: user?.name ?? userEmail?.split("@")[0] ?? "",
     avatarColor: user?.avatarColor ?? null,
     avatarUrl: user?.avatarUrl ?? null,
+    birthDate: user?.birthDate ? user.birthDate.toISOString().slice(0, 10) : null,
+    fireAge: user?.fireAge ?? null,
     total: totalValue + cash,
     invested: totalCost,
     dayAbs: dayAbsSum,

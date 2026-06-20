@@ -23,6 +23,8 @@ import {
   buildRing,
   buildProjection,
   yearsToReachGoal,
+  requiredMonthlyContribution,
+  HISTORICAL_BENCHMARKS,
   nf,
   eur,
   signPct,
@@ -63,9 +65,10 @@ export function AtelierDashboard({
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [projRate, setProjRate] = useState(5);
   const [projMonthly, setProjMonthly] = useState(0);
-  const [simCapital, setSimCapital] = useState(data.total);
-  const [simMonthly, setSimMonthly] = useState(0);
-  const [simRate, setSimRate] = useState(5);
+  const [birthDate, setBirthDate] = useState(data.birthDate ?? "");
+  const [fireAge, setFireAge] = useState(data.fireAge ?? 50);
+  const [fireRate, setFireRate] = useState(7);
+  const [fireSaving, setFireSaving] = useState(false);
   const [watchlist, setWatchlist] = useState(data.watchlist);
 
   const isEmpty = data.positions.length === 0 && data.cash <= 0;
@@ -145,10 +148,30 @@ export function AtelierDashboard({
     [data.total, data.goal, projRate, projMonthly, projectionYears]
   );
 
-  const simTimeToGoal = useMemo(
-    () => (data.goal ? yearsToReachGoal(simCapital, data.goal, simRate, simMonthly) : null),
-    [simCapital, data.goal, simRate, simMonthly]
-  );
+  // ── Calculatrice FIRE : âge actuel (date de naissance) -> âge cible,
+  // versement mensuel requis pour atteindre l'objectif à temps ──────────
+  const currentAge = useMemo(() => {
+    if (!birthDate) return null;
+    const diffMs = Date.now() - new Date(birthDate).getTime();
+    return Math.floor(diffMs / (365.25 * 86_400_000));
+  }, [birthDate]);
+
+  const yearsToFire = currentAge !== null ? fireAge - currentAge : null;
+
+  const requiredMonthly = useMemo(() => {
+    if (!data.goal || yearsToFire === null) return null;
+    return requiredMonthlyContribution(data.total, data.goal, fireRate, yearsToFire);
+  }, [data.total, data.goal, fireRate, yearsToFire]);
+
+  async function saveFireProfile(nextBirthDate: string, nextFireAge: number) {
+    setFireSaving(true);
+    await fetch("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ birthDate: nextBirthDate || null, fireAge: nextFireAge }),
+    });
+    setFireSaving(false);
+  }
 
   // ── Mouvements (positions + watchlist réelles, pas de marché générique) ──
   const movers = useMemo(() => {
@@ -698,30 +721,36 @@ export function AtelierDashboard({
             </section>
 
             <section className="col-span-12 rounded-[22px] border border-[var(--line)] bg-[var(--panel)] px-[26px] py-6" style={{ boxShadow: "var(--shadow)" }}>
-              <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Simulateur</h2>
+              <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Simulateur FIRE</h2>
               <p className="mb-4 text-[12.5px] text-[var(--fg2)]">
-                Avec ce que tu as et ce que tu comptes investir chaque mois, dans combien de temps atteindrais-tu ton objectif ?
+                À quel âge veux-tu être indépendant financièrement (FIRE) ? On calcule combien il te faudrait investir chaque mois pour y arriver.
               </p>
 
               <div className="mb-4 grid grid-cols-3 gap-3">
                 <label className="flex flex-col gap-1 text-[12px] text-[var(--fg2)]">
-                  Ce que j&apos;ai
+                  Date de naissance
                   <input
-                    type="number"
-                    step="100"
-                    value={simCapital}
-                    onChange={(e) => setSimCapital(Number(e.target.value))}
+                    type="date"
+                    value={birthDate}
+                    onChange={(e) => {
+                      setBirthDate(e.target.value);
+                      saveFireProfile(e.target.value, fireAge);
+                    }}
                     className="rounded-[10px] border px-3 py-2 text-[13px] outline-none"
                     style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-[12px] text-[var(--fg2)]">
-                  Versement mensuel
+                  Âge FIRE visé
                   <input
                     type="number"
-                    step="50"
-                    value={simMonthly}
-                    onChange={(e) => setSimMonthly(Number(e.target.value))}
+                    step="1"
+                    value={fireAge}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setFireAge(v);
+                      saveFireProfile(birthDate, v);
+                    }}
                     className="rounded-[10px] border px-3 py-2 text-[13px] outline-none"
                     style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
                   />
@@ -731,38 +760,63 @@ export function AtelierDashboard({
                   <input
                     type="number"
                     step="0.5"
-                    value={simRate}
-                    onChange={(e) => setSimRate(Number(e.target.value))}
+                    value={fireRate}
+                    onChange={(e) => setFireRate(Number(e.target.value))}
                     className="rounded-[10px] border px-3 py-2 text-[13px] outline-none"
                     style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
                   />
                 </label>
               </div>
 
-              {data.goal ? (
+              {!birthDate ? (
+                <p className="text-[13px] text-[var(--fg2)]">Renseigne ta date de naissance pour utiliser le simulateur FIRE.</p>
+              ) : !data.goal ? (
+                <p className="text-[13px] text-[var(--fg2)]">Définis un objectif ci-dessus pour utiliser le simulateur FIRE.</p>
+              ) : yearsToFire !== null && yearsToFire <= 0 ? (
                 <div className="rounded-[14px] px-4 py-3 text-[13px]" style={{ background: "var(--panel2)", color: "var(--fg)" }}>
-                  {simTimeToGoal ? (
-                    simTimeToGoal.years === 0 && simTimeToGoal.months === 0 ? (
-                      <>Avec {eur(simCapital)}, tu as déjà atteint ton objectif de {eur(data.goal)}.</>
+                  Tu as déjà {currentAge} ans, l&apos;âge FIRE visé ({fireAge} ans) est déjà atteint ou dépassé.
+                </div>
+              ) : (
+                <div className="rounded-[14px] px-4 py-3 text-[13px]" style={{ background: "var(--panel2)", color: "var(--fg)" }}>
+                  Tu as <strong>{currentAge} ans</strong>, soit <strong style={{ color: "var(--accent2)" }}>{yearsToFire} an{(yearsToFire ?? 0) > 1 ? "s" : ""}</strong> avant l&apos;âge FIRE visé de {fireAge} ans.
+                  {requiredMonthly !== null && Number.isFinite(requiredMonthly) ? (
+                    requiredMonthly <= 0 ? (
+                      <> Avec <strong>{eur(data.total)}</strong> déjà investis à <strong>{nf(fireRate, 1)} %/an</strong>, tu es déjà sur la trajectoire pour atteindre <strong>{eur(data.goal)}</strong> sans effort supplémentaire.</>
                     ) : (
                       <>
-                        Avec <strong>{eur(simCapital)}</strong> et <strong>{eur(simMonthly)}/mois</strong> à <strong>{nf(simRate, 1)} %/an</strong>, tu
-                        atteindrais ton objectif de <strong>{eur(data.goal)}</strong> dans environ{" "}
-                        <strong style={{ color: "var(--accent2)" }}>
-                          {simTimeToGoal.years > 0 ? `${simTimeToGoal.years} an${simTimeToGoal.years > 1 ? "s" : ""}` : ""}
-                          {simTimeToGoal.years > 0 && simTimeToGoal.months > 0 ? " et " : ""}
-                          {simTimeToGoal.months > 0 ? `${simTimeToGoal.months} mois` : ""}
-                        </strong>
-                        .
+                        {" "}Avec <strong>{eur(data.total)}</strong> déjà investis à <strong>{nf(fireRate, 1)} %/an</strong>, il te faudrait investir environ{" "}
+                        <strong style={{ color: "var(--accent2)" }}>{eur(requiredMonthly)}/mois</strong> pour atteindre ton objectif de <strong>{eur(data.goal)}</strong>.
                       </>
                     )
                   ) : (
-                    <>À ce taux et ce versement, l'objectif ne serait pas atteint avant 60 ans.</>
+                    <> À ce taux, l&apos;objectif de <strong>{eur(data.goal)}</strong> ne serait pas atteignable dans ce délai.</>
                   )}
                 </div>
-              ) : (
-                <p className="text-[13px] text-[var(--fg2)]">Définis un objectif ci-dessus pour utiliser le simulateur.</p>
               )}
+
+              <div className="mt-4">
+                <p className="mb-2 text-[12px] text-[var(--fg2)]">
+                  Comparer avec des rentabilités historiques moyennes (à titre indicatif, le passé ne garantit pas le futur) :
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {HISTORICAL_BENCHMARKS.map((b) => (
+                    <button
+                      key={b.label}
+                      type="button"
+                      onClick={() => setFireRate(b.ratePct)}
+                      className="rounded-full border px-3 py-1.5 text-[12px] transition"
+                      style={{
+                        borderColor: fireRate === b.ratePct ? "var(--accent)" : "var(--line)",
+                        background: fireRate === b.ratePct ? "var(--posbg)" : "var(--panel2)",
+                        color: "var(--fg)",
+                      }}
+                      title={b.note}
+                    >
+                      {b.label} · {nf(b.ratePct, 1)} %
+                    </button>
+                  ))}
+                </div>
+              </div>
             </section>
           </div>
         )}

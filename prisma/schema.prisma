@@ -23,6 +23,8 @@ model User {
   avatarUrl     String?   @db.Text
   onboarded     Boolean   @default(false)
   goalAmount    Decimal?  @db.Decimal(18, 2)
+  birthDate     DateTime?
+  fireAge       Int?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

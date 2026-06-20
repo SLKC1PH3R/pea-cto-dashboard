@@ -61,6 +61,8 @@ export interface DashboardData {
   name: string;
   avatarColor: string | null;
   avatarUrl: string | null;
+  birthDate: string | null; // ISO yyyy-mm-dd
+  fireAge: number | null;
   total: number;
   invested: number;
   dayAbs: number;
@@ -256,6 +258,40 @@ export function yearsToReachGoal(
   }
   return null; // pas atteint dans l'horizon maximal (taux/versement trop faibles)
 }
+
+// ── Versement mensuel requis pour atteindre un objectif dans N années
+// (calculatrice FIRE : âge actuel -> âge cible) ─────────────────────
+export function requiredMonthlyContribution(start: number, goal: number, ratePct: number, years: number): number {
+  if (years <= 0) return goal > start ? Infinity : 0;
+  const n = years * 12;
+  const rMonthly = ratePct / 100 / 12;
+  const futureStart = start * Math.pow(1 + rMonthly, n);
+  const remaining = goal - futureStart;
+  if (remaining <= 0) return 0; // déjà en bonne voie sans rien ajouter
+  if (rMonthly === 0) return remaining / n;
+  const annuityFactor = (Math.pow(1 + rMonthly, n) - 1) / rMonthly;
+  return remaining / annuityFactor;
+}
+
+// ── Rentabilités historiques annualisées à titre indicatif (long terme,
+// dividendes/réinvestissement inclus le cas échéant). Moyennes connues et
+// largement publiées — PAS une prédiction, le passé ne garantit pas le
+// futur, et la volatilité réelle (surtout Bitcoin) peut être extrême.
+// ────────────────────────────────────────────────────────────────────
+export interface HistoricalBenchmark {
+  label: string;
+  ratePct: number;
+  note: string;
+}
+
+export const HISTORICAL_BENCHMARKS: HistoricalBenchmark[] = [
+  { label: "Livret A / fonds €", ratePct: 2.5, note: "sans risque, référence basse" },
+  { label: "Or (XAU)", ratePct: 7, note: "très long terme" },
+  { label: "MSCI World", ratePct: 8, note: "actions monde diversifiées" },
+  { label: "S&P 500", ratePct: 10, note: "moyenne ~1957–2024, dividendes réinvestis" },
+  { label: "Nasdaq 100", ratePct: 13, note: "moyenne depuis 1985, plus volatil" },
+  { label: "Bitcoin", ratePct: 30, note: "extrêmement volatil, chiffre très incertain" },
+];
 
 // ── Palette "Atelier" (violet feutré) — variables CSS par thème ─
 export type Theme = "light" | "dark";

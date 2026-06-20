@@ -11,10 +11,12 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { name, avatarColor, avatarUrl } = body as {
+  const { name, avatarColor, avatarUrl, birthDate, fireAge } = body as {
     name?: string;
     avatarColor?: string | null;
     avatarUrl?: string | null;
+    birthDate?: string | null;
+    fireAge?: number | null;
   };
 
   if (avatarUrl && avatarUrl.length > MAX_AVATAR_LENGTH) {
@@ -27,8 +29,16 @@ export async function POST(req: NextRequest) {
       ...(name !== undefined ? { name: name.trim() || null } : {}),
       ...(avatarColor !== undefined ? { avatarColor } : {}),
       ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+      ...(birthDate !== undefined ? { birthDate: birthDate ? new Date(birthDate) : null } : {}),
+      ...(fireAge !== undefined ? { fireAge } : {}),
     },
   });
 
-  return NextResponse.json({ name: user.name, avatarColor: user.avatarColor, avatarUrl: user.avatarUrl });
+  return NextResponse.json({
+    name: user.name,
+    avatarColor: user.avatarColor,
+    avatarUrl: user.avatarUrl,
+    birthDate: user.birthDate ? user.birthDate.toISOString().slice(0, 10) : null,
+    fireAge: user.fireAge,
+  });
 }
