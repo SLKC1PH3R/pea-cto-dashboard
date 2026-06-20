@@ -59,6 +59,8 @@ export interface WatchItem {
 export interface DashboardData {
   email: string;
   name: string;
+  avatarColor: string | null;
+  avatarUrl: string | null;
   total: number;
   invested: number;
   dayAbs: number;

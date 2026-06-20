@@ -29,6 +29,7 @@ import {
 } from "./atelier-data";
 import { MarketsBrowser } from "@/components/markets/MarketsBrowser";
 import { GoalForm } from "@/components/objectifs/GoalForm";
+import { ProfileSettings } from "@/components/profile/ProfileSettings";
 
 type SortKey = "name" | "value" | "day" | "totalPct" | "weight";
 type Page = "synthese" | "portefeuille" | "marches" | "objectifs";
@@ -205,17 +206,11 @@ export function AtelierDashboard({
               ))}
             </div>
             <div className="flex items-center gap-[9px] rounded-xl border border-[var(--line)] bg-[var(--panel)] px-[14px] py-2">
-              <span className="text-[12px] text-[var(--fg3)]">Liquidités</span>
-              <span style={num} className="text-[13px] font-semibold text-[var(--fg)]">{eur(data.cash)}</span>
+              <span className="text-[12px] text-[var(--fg3)]">Valeur totale</span>
+              <span style={num} className="text-[13px] font-semibold text-[var(--fg)]">{eur(data.total)}</span>
             </div>
             <div className="flex items-center gap-[9px]">
-              <div
-                className="flex h-[38px] w-[38px] items-center justify-center rounded-full text-[14px] font-bold text-white"
-                style={{ background: "linear-gradient(140deg, var(--accent), var(--accent2))" }}
-                title={data.email}
-              >
-                {data.name.charAt(0)}
-              </div>
+              <ProfileSettings name={data.name} email={data.email} avatarColor={data.avatarColor} avatarUrl={data.avatarUrl} />
               <form action={signOutAction}>
                 <button
                   type="submit"

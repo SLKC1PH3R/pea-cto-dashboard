@@ -19,6 +19,8 @@ model User {
   // Null pour les comptes créés via Google (pas de mot de passe local)
   passwordHash  String?
   name          String?
+  avatarColor   String?
+  avatarUrl     String?   @db.Text
   onboarded     Boolean   @default(false)
   goalAmount    Decimal?  @db.Decimal(18, 2)
   createdAt     DateTime  @default(now())

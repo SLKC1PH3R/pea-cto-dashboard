@@ -17,7 +17,9 @@ export default auth((req) => {
     pathname.startsWith("/api/accounts") ||
     pathname.startsWith("/api/onboarding") ||
     pathname.startsWith("/api/watchlist") ||
-    pathname.startsWith("/api/goal");
+    pathname.startsWith("/api/goal") ||
+    pathname.startsWith("/api/profile") ||
+    pathname.startsWith("/api/quotes");
 
   if (isProtected && !isLoggedIn) {
     const loginUrl = new URL("/login", req.url);
@@ -52,5 +54,7 @@ export const config = {
     "/api/onboarding",
     "/api/watchlist",
     "/api/goal",
+    "/api/profile",
+    "/api/quotes",
   ],
 };
