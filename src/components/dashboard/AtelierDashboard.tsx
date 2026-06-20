@@ -22,6 +22,7 @@ import {
   buildDonut,
   buildRing,
   buildProjection,
+  yearsToReachGoal,
   nf,
   eur,
   signPct,
@@ -62,6 +63,9 @@ export function AtelierDashboard({
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [projRate, setProjRate] = useState(5);
   const [projMonthly, setProjMonthly] = useState(0);
+  const [simCapital, setSimCapital] = useState(data.total);
+  const [simMonthly, setSimMonthly] = useState(0);
+  const [simRate, setSimRate] = useState(5);
   const [watchlist, setWatchlist] = useState(data.watchlist);
 
   const isEmpty = data.positions.length === 0 && data.cash <= 0;
@@ -128,9 +132,22 @@ export function AtelierDashboard({
     return data.sectors.map((s) => ({ ...s, barPct: (s.pct / max) * 100 }));
   }, [data.sectors]);
 
-  const projection = useMemo(
-    () => buildProjection(data.total, data.goal, projRate, projMonthly),
+  // ── Temps estimé pour atteindre l'objectif, recalculé dès que le total
+  // réel (donc le PnL), le rythme de versement ou le taux changent ──────
+  const timeToGoal = useMemo(
+    () => (data.goal ? yearsToReachGoal(data.total, data.goal, projRate, projMonthly) : null),
     [data.total, data.goal, projRate, projMonthly]
+  );
+  const projectionYears = Math.min(Math.max(timeToGoal ? timeToGoal.years + 1 : 10, 1), 60);
+
+  const projection = useMemo(
+    () => buildProjection(data.total, data.goal, projRate, projMonthly, projectionYears),
+    [data.total, data.goal, projRate, projMonthly, projectionYears]
+  );
+
+  const simTimeToGoal = useMemo(
+    () => (data.goal ? yearsToReachGoal(simCapital, data.goal, simRate, simMonthly) : null),
+    [simCapital, data.goal, simRate, simMonthly]
   );
 
   // ── Mouvements (positions + watchlist réelles, pas de marché générique) ──
@@ -595,7 +612,7 @@ export function AtelierDashboard({
                 <div>
                   <h2 className="text-[17px] font-bold text-[var(--fg)]">Simulation de projection</h2>
                   <span className="text-[12.5px] text-[var(--fg2)]">
-                    Hypothèses ajustables — pas une prévision garantie, juste un calcul de capitalisation composée.
+                    Basée sur ton capital actuel ({eur(data.total)}) vs ton objectif — se réajuste avec le PnL réel et tes positions.
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -625,6 +642,31 @@ export function AtelierDashboard({
                   </label>
                 </div>
               </div>
+
+              {data.goal ? (
+                <div
+                  className="mb-4 rounded-[14px] px-4 py-3 text-[13px]"
+                  style={{ background: "var(--panel2)", color: "var(--fg)" }}
+                >
+                  {timeToGoal ? (
+                    <>
+                      Au rythme de <strong>{nf(projRate, 1)} %/an</strong> et <strong>{eur(projMonthly)}/mois</strong>, tu atteindras ton
+                      objectif de <strong>{eur(data.goal)}</strong> dans environ{" "}
+                      <strong style={{ color: "var(--accent2)" }}>
+                        {timeToGoal.years === 0 && timeToGoal.months === 0
+                          ? "0 mois — déjà atteint"
+                          : `${timeToGoal.years > 0 ? `${timeToGoal.years} an${timeToGoal.years > 1 ? "s" : ""}` : ""}${timeToGoal.years > 0 && timeToGoal.months > 0 ? " et " : ""}${timeToGoal.months > 0 ? `${timeToGoal.months} mois` : ""}`}
+                      </strong>
+                      .
+                    </>
+                  ) : (
+                    <>À ce taux et ce versement, l'objectif ne serait pas atteint avant 60 ans — augmente le taux ou le versement mensuel.</>
+                  )}
+                </div>
+              ) : (
+                <p className="mb-4 text-[13px] text-[var(--fg2)]">Définis un objectif ci-dessus pour voir l'estimation.</p>
+              )}
+
               <div className="relative h-[196px]">
                 <svg width="100%" height="100%" viewBox="0 0 1000 300" preserveAspectRatio="none" className="block overflow-visible">
                   <defs>
@@ -650,9 +692,77 @@ export function AtelierDashboard({
               </div>
               <ChartLabels labels={projection.labels} />
               <div className="mt-3 flex items-center gap-2 text-[12.5px] text-[var(--fg2)]">
-                Valeur estimée dans 10 ans :
+                Valeur estimée dans {projectionYears} an{projectionYears > 1 ? "s" : ""} :
                 <span style={num} className="font-bold text-[var(--fg)]">{eur(projection.endValue)}</span>
               </div>
+            </section>
+
+            <section className="col-span-12 rounded-[22px] border border-[var(--line)] bg-[var(--panel)] px-[26px] py-6" style={{ boxShadow: "var(--shadow)" }}>
+              <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Simulateur</h2>
+              <p className="mb-4 text-[12.5px] text-[var(--fg2)]">
+                Avec ce que tu as et ce que tu comptes investir chaque mois, dans combien de temps atteindrais-tu ton objectif ?
+              </p>
+
+              <div className="mb-4 grid grid-cols-3 gap-3">
+                <label className="flex flex-col gap-1 text-[12px] text-[var(--fg2)]">
+                  Ce que j&apos;ai
+                  <input
+                    type="number"
+                    step="100"
+                    value={simCapital}
+                    onChange={(e) => setSimCapital(Number(e.target.value))}
+                    className="rounded-[10px] border px-3 py-2 text-[13px] outline-none"
+                    style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-[12px] text-[var(--fg2)]">
+                  Versement mensuel
+                  <input
+                    type="number"
+                    step="50"
+                    value={simMonthly}
+                    onChange={(e) => setSimMonthly(Number(e.target.value))}
+                    className="rounded-[10px] border px-3 py-2 text-[13px] outline-none"
+                    style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-[12px] text-[var(--fg2)]">
+                  Taux annuel estimé
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={simRate}
+                    onChange={(e) => setSimRate(Number(e.target.value))}
+                    className="rounded-[10px] border px-3 py-2 text-[13px] outline-none"
+                    style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
+                  />
+                </label>
+              </div>
+
+              {data.goal ? (
+                <div className="rounded-[14px] px-4 py-3 text-[13px]" style={{ background: "var(--panel2)", color: "var(--fg)" }}>
+                  {simTimeToGoal ? (
+                    simTimeToGoal.years === 0 && simTimeToGoal.months === 0 ? (
+                      <>Avec {eur(simCapital)}, tu as déjà atteint ton objectif de {eur(data.goal)}.</>
+                    ) : (
+                      <>
+                        Avec <strong>{eur(simCapital)}</strong> et <strong>{eur(simMonthly)}/mois</strong> à <strong>{nf(simRate, 1)} %/an</strong>, tu
+                        atteindrais ton objectif de <strong>{eur(data.goal)}</strong> dans environ{" "}
+                        <strong style={{ color: "var(--accent2)" }}>
+                          {simTimeToGoal.years > 0 ? `${simTimeToGoal.years} an${simTimeToGoal.years > 1 ? "s" : ""}` : ""}
+                          {simTimeToGoal.years > 0 && simTimeToGoal.months > 0 ? " et " : ""}
+                          {simTimeToGoal.months > 0 ? `${simTimeToGoal.months} mois` : ""}
+                        </strong>
+                        .
+                      </>
+                    )
+                  ) : (
+                    <>À ce taux et ce versement, l'objectif ne serait pas atteint avant 60 ans.</>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[13px] text-[var(--fg2)]">Définis un objectif ci-dessus pour utiliser le simulateur.</p>
+              )}
             </section>
           </div>
         )}

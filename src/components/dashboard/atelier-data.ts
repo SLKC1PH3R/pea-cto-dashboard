@@ -230,6 +230,33 @@ export function buildProjection(
   };
 }
 
+// ── Temps estimé pour atteindre un objectif (capitalisation composée
+// mensuelle + versement mensuel constant) ──────────────────────────
+export interface TimeToGoal {
+  years: number;
+  months: number;
+}
+
+export function yearsToReachGoal(
+  start: number,
+  goal: number,
+  ratePct: number,
+  monthly: number,
+  maxYears = 60
+): TimeToGoal | null {
+  if (goal <= start) return { years: 0, months: 0 };
+  const rMonthly = ratePct / 100 / 12;
+  let bal = start;
+  const maxMonths = maxYears * 12;
+  for (let m = 1; m <= maxMonths; m++) {
+    bal = bal * (1 + rMonthly) + monthly;
+    if (bal >= goal) {
+      return { years: Math.floor(m / 12), months: m % 12 };
+    }
+  }
+  return null; // pas atteint dans l'horizon maximal (taux/versement trop faibles)
+}
+
 // ── Palette "Atelier" (violet feutré) — variables CSS par thème ─
 export type Theme = "light" | "dark";
 
