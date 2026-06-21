@@ -58,7 +58,15 @@ export function MarketsBrowser({ watchlist, onAdd, onRemove }: MarketsBrowserPro
           body: JSON.stringify({ ticker: upper, name }),
         });
         const data = await res.json();
-        onAdd({ name, ticker: upper, cls: "Watchlist", price: data.price ?? 0, day: data.day ?? 0 });
+        const hasLivePrice = typeof data.price === "number";
+        onAdd({
+          name,
+          ticker: upper,
+          cls: "Watchlist",
+          price: hasLivePrice ? data.price : null,
+          day: hasLivePrice ? data.day : null,
+          priceSource: hasLivePrice ? "live" : "none",
+        });
       }
     } finally {
       setPending(null);

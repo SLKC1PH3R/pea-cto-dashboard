@@ -89,6 +89,24 @@ export function AtelierDashboard({
     router.refresh();
   }
 
+  const [editingWatchTicker, setEditingWatchTicker] = useState<string | null>(null);
+  const [watchPriceInput, setWatchPriceInput] = useState("");
+  const [savingWatchPrice, setSavingWatchPrice] = useState(false);
+
+  async function saveWatchManualPrice(ticker: string) {
+    const price = parseFloat(watchPriceInput);
+    if (!Number.isFinite(price) || price <= 0) return;
+    setSavingWatchPrice(true);
+    await fetch("/api/watchlist/manual-price", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticker, price }),
+    });
+    setSavingWatchPrice(false);
+    setEditingWatchTicker(null);
+    router.refresh();
+  }
+
   const isEmpty = data.positions.length === 0 && data.cash <= 0;
 
   function addWatchlistItem(item: (typeof watchlist)[number]) {
@@ -195,7 +213,7 @@ export function AtelierDashboard({
   const movers = useMemo(() => {
     const all = [
       ...data.positions.map((p) => ({ name: p.name, ticker: p.ticker, pct: p.day })),
-      ...watchlist.map((w) => ({ name: w.name, ticker: w.ticker, pct: w.day })),
+      ...watchlist.filter((w) => w.day !== null).map((w) => ({ name: w.name, ticker: w.ticker, pct: w.day as number })),
     ];
     const sorted = [...all].sort((a, b) => b.pct - a.pct);
     return { up: sorted.slice(0, 3), down: sorted.slice(-3).reverse() };
@@ -686,9 +704,64 @@ export function AtelierDashboard({
                             <span className="text-[11px] text-[var(--fg3)]">{w.ticker}</span>
                           </div>
                         </td>
-                        <td style={num} className="px-3 py-[11px] text-right font-semibold text-[var(--fg)]">{eur(w.price, 2)}</td>
                         <td className="px-3 py-[11px] text-right">
-                          <span style={{ ...num, color: w.day >= 0 ? "var(--pos)" : "var(--neg)", background: w.day >= 0 ? "var(--posbg)" : "var(--negbg)" }} className="rounded-[7px] px-2 py-[3px] text-[12px] font-bold">{signPct(w.day)}</span>
+                          {editingWatchTicker === w.ticker ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                step="any"
+                                autoFocus
+                                value={watchPriceInput}
+                                onChange={(e) => setWatchPriceInput(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && saveWatchManualPrice(w.ticker)}
+                                className="w-20 rounded-[6px] border px-2 py-1 text-right text-[12px] outline-none"
+                                style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
+                              />
+                              <button
+                                type="button"
+                                disabled={savingWatchPrice}
+                                onClick={() => saveWatchManualPrice(w.ticker)}
+                                className="rounded-[6px] px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                                style={{ background: "var(--accent)" }}
+                              >
+                                ✓
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-[6px]">
+                              {w.priceSource !== "live" && w.priceSource !== "none" && (
+                                <span
+                                  className="rounded-[5px] px-[5px] py-[1px] text-[9.5px] font-semibold uppercase"
+                                  style={
+                                    w.priceSource === "boursorama"
+                                      ? { background: "var(--posbg)", color: "var(--pos)" }
+                                      : { background: "var(--negbg)", color: "var(--neg)" }
+                                  }
+                                >
+                                  {w.priceSource === "boursorama" ? "bourso" : "manuel"}
+                                </span>
+                              )}
+                              <span style={num} className="font-semibold text-[var(--fg)]">{w.price !== null ? eur(w.price, 2) : "—"}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingWatchTicker(w.ticker);
+                                  setWatchPriceInput(w.price !== null ? String(w.price) : "");
+                                }}
+                                className="text-[11px] text-[var(--fg3)] hover:text-[var(--accent)]"
+                                title="Saisir un cours manuel"
+                              >
+                                ✎
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-[11px] text-right">
+                          {w.day !== null ? (
+                            <span style={{ ...num, color: w.day >= 0 ? "var(--pos)" : "var(--neg)", background: w.day >= 0 ? "var(--posbg)" : "var(--negbg)" }} className="rounded-[7px] px-2 py-[3px] text-[12px] font-bold">{signPct(w.day)}</span>
+                          ) : (
+                            <span className="text-[12px] text-[var(--fg3)]">—</span>
+                          )}
                         </td>
                         <td className="px-6 py-[11px] text-right">
                           <button

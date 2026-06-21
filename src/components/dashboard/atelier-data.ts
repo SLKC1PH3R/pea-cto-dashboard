@@ -53,8 +53,9 @@ export interface WatchItem {
   name: string;
   ticker: string;
   cls: string;
-  price: number;
-  day: number;
+  price: number | null;
+  day: number | null;
+  priceSource: "live" | "boursorama" | "manual" | "none";
 }
 
 // ── Plafond réglementaire PEA (valeur fixe légale, pas une donnée fabriquée :

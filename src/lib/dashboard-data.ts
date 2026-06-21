@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getQuotes } from "@/lib/finnhub";
 import { getBoursoramaQuoteByIsin, type BoursoramaQuote } from "@/lib/boursorama-quote";
+import { findIsinByTicker } from "@/lib/parsers/asset-mapping";
 import { currentQuantity, averageCostPrice, totalAcquisitionCost, realizedPnl } from "@/lib/finance-calculations";
 import type {
   DashboardData,
@@ -218,17 +219,35 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     }))
     .sort((a, b) => b.pct - a.pct);
 
-  // ── Watchlist : cotations réelles via Finnhub pour les tickers suivis
+  // ── Watchlist : cotation Finnhub si disponible, sinon repli boursorama.com
+  // (via l'ISIN connu du ticker), sinon cours saisi manuellement — un actif
+  // suivi reste affiché même sans aucune source automatique (prix "—").
   const watchlistItems = await prisma.watchlistItem.findMany({ where: { userId } });
   const watchlistTickers = watchlistItems.map((w) => w.ticker);
   const watchlistQuotes = watchlistTickers.length > 0 ? await getQuotes(watchlistTickers) : {};
-  const watchlist: WatchItem[] = watchlistItems
-    .map((w) => {
-      const q = watchlistQuotes[w.ticker];
-      if (!q) return null;
-      return { name: w.name ?? w.ticker, ticker: w.ticker, cls: "Watchlist", price: q.c, day: q.dp };
+
+  const watchlistMissing = watchlistItems.filter((w) => !watchlistQuotes[w.ticker]);
+  const watchlistBoursoramaResults = await Promise.all(
+    watchlistMissing.map(async (w) => {
+      const isin = findIsinByTicker(w.ticker);
+      return [w.ticker, isin ? await getBoursoramaQuoteByIsin(isin) : null] as const;
     })
-    .filter((w): w is WatchItem => w !== null);
+  );
+  const watchlistBoursoramaQuotes: Record<string, BoursoramaQuote> = {};
+  for (const [ticker, q] of watchlistBoursoramaResults) {
+    if (q) watchlistBoursoramaQuotes[ticker] = q;
+  }
+
+  const watchlist: WatchItem[] = watchlistItems.map((w) => {
+    const q = watchlistQuotes[w.ticker];
+    const bq = watchlistBoursoramaQuotes[w.ticker];
+    if (q) return { name: w.name ?? w.ticker, ticker: w.ticker, cls: "Watchlist", price: q.c, day: q.dp, priceSource: "live" };
+    if (bq) return { name: w.name ?? w.ticker, ticker: w.ticker, cls: "Watchlist", price: bq.price, day: bq.dayPct, priceSource: "boursorama" };
+    if (w.manualPrice) {
+      return { name: w.name ?? w.ticker, ticker: w.ticker, cls: "Watchlist", price: w.manualPrice.toNumber(), day: 0, priceSource: "manual" };
+    }
+    return { name: w.name ?? w.ticker, ticker: w.ticker, cls: "Watchlist", price: null, day: null, priceSource: "none" };
+  });
 
   // ── Top hausses / baisses du jour, à partir des positions réelles
   const sortedByDay = [...atelierPositions].sort((a, b) => b.day - a.day);

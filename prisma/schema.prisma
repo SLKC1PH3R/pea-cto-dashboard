@@ -44,6 +44,10 @@ model WatchlistItem {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   ticker    String
   name      String?
+  // Cours saisi manuellement, en repli quand ni Finnhub ni boursorama.com
+  // ne couvrent ce ticker (ex: ETC sur la London Stock Exchange).
+  manualPrice   Decimal?  @db.Decimal(18, 4)
+  manualPriceAt DateTime?
   createdAt DateTime @default(now())
 
   @@unique([userId, ticker])

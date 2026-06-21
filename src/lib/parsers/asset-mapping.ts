@@ -124,6 +124,12 @@ export type AssetResolution =
   | { matched: true; asset: KnownAsset }
   | { matched: false; rawName: string };
 
+/** Retrouve l'ISIN connu d'un ticker (utile pour un repli de cotation par ISIN, ex: boursorama.com). */
+export function findIsinByTicker(ticker: string): string | null {
+  const known = KNOWN_ASSETS.find((a) => a.ticker?.toUpperCase() === ticker.toUpperCase());
+  return known?.isin ?? null;
+}
+
 export function resolveAssetName(rawName: string): AssetResolution {
   const normalized = rawName.toUpperCase();
 
