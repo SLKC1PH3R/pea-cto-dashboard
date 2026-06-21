@@ -15,6 +15,9 @@ type DcaRuleFormProps = {
 
 export function DcaRuleForm({ accounts }: DcaRuleFormProps) {
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const [isin, setIsin] = useState("");
+  const [resolving, setResolving] = useState(false);
+  const [resolveFeedback, setResolveFeedback] = useState<string | null>(null);
   const [ticker, setTicker] = useState("");
   const [assetName, setAssetName] = useState("");
   const [amount, setAmount] = useState("");
@@ -22,6 +25,27 @@ export function DcaRuleForm({ accounts }: DcaRuleFormProps) {
   const [firstExecution, setFirstExecution] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "ok" | "error"; message: string } | null>(null);
+
+  async function resolveFromIsin() {
+    if (!isin.trim()) return;
+    setResolving(true);
+    setResolveFeedback(null);
+    try {
+      const res = await fetch(`/api/assets/resolve-isin?isin=${encodeURIComponent(isin.trim())}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setResolveFeedback(data.error ?? "ISIN non reconnu");
+      } else {
+        setTicker(data.ticker);
+        setAssetName(data.name);
+        setResolveFeedback(`Résolu : ${data.ticker} — ${data.name}`);
+      }
+    } catch {
+      setResolveFeedback("Erreur réseau");
+    } finally {
+      setResolving(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,6 +102,28 @@ export function DcaRuleForm({ accounts }: DcaRuleFormProps) {
             </option>
           ))}
         </select>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm text-[var(--fg2)]">ISIN (optionnel — pour retrouver le ticker automatiquement)</label>
+        <div className="flex gap-2">
+          <input
+            value={isin}
+            onChange={(e) => setIsin(e.target.value.toUpperCase())}
+            placeholder="ex: IE00B4NCWG09"
+            className="w-full rounded-[10px] border px-3 py-2 text-sm outline-none focus:ring-2" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
+          />
+          <button
+            type="button"
+            disabled={resolving || !isin.trim()}
+            onClick={resolveFromIsin}
+            className="flex-none rounded-[10px] border px-3 py-2 text-sm font-medium disabled:opacity-50"
+            style={{ borderColor: "var(--line)", color: "var(--fg2)" }}
+          >
+            {resolving ? "…" : "Résoudre"}
+          </button>
+        </div>
+        {resolveFeedback && <p className="mt-1 text-xs text-[var(--fg2)]">{resolveFeedback}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-3">

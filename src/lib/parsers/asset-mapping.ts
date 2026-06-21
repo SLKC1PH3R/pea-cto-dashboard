@@ -130,6 +130,15 @@ export function findIsinByTicker(ticker: string): string | null {
   return known?.isin ?? null;
 }
 
+/**
+ * Résout un actif par ISIN — bien plus fiable qu'un nom Boursorama abrégé,
+ * quand le document l'indique ("Code ISIN : XXXXXXXXXX").
+ */
+export function resolveAssetByIsin(isin: string): AssetResolution | null {
+  const known = KNOWN_ASSETS.find((a) => a.isin?.toUpperCase() === isin.toUpperCase());
+  return known ? { matched: true, asset: known } : null;
+}
+
 export function resolveAssetName(rawName: string): AssetResolution {
   const normalized = rawName.toUpperCase();
 

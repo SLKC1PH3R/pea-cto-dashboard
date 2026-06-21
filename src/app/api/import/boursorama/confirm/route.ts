@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { resolveAssetName } from "@/lib/parsers/asset-mapping";
+import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
 
 type ConfirmTransaction = {
   filename: string;
   date: string;
   operationLabel: string;
   assetName: string;
+  isin?: string | null;
   ticker: string;
   quantity: number;
   amount: number;
@@ -57,9 +58,12 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const resolution = resolveAssetName(tx.assetName);
+      // L'ISIN imprimé sur le document (le plus fiable) prime sur le nom
+      // abrégé Boursorama pour retrouver les métadonnées connues.
+      const byIsin = tx.isin ? resolveAssetByIsin(tx.isin) : null;
+      const resolution = byIsin ?? resolveAssetName(tx.assetName);
       // On fait confiance aux métadonnées résolues (nom, ISIN, secteur...) si
-      // le nom est reconnu ET que le ticker final correspond au ticker
+      // le nom/ISIN est reconnu ET que le ticker final correspond au ticker
       // connu — ou qu'aucun ticker canonique n'était défini (fonds identifié
       // par son ISIN, ticker résolu dynamiquement via Finnhub à l'import).
       const known =
@@ -79,7 +83,7 @@ export async function POST(req: NextRequest) {
               assetType: known.assetType,
               benchmarkTicker: known.benchmarkTicker,
             }
-          : { ticker, name: tx.assetName, assetType: "ACTION", currency: "EUR" },
+          : { ticker, isin: tx.isin ?? undefined, name: tx.assetName, assetType: "ACTION", currency: "EUR" },
       });
 
       const position = await prisma.position.upsert({

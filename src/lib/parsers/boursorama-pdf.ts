@@ -36,6 +36,7 @@ export type ParsedBoursoramaTransaction = {
   date: Date;
   operationLabel: string; // ex: "ACHAT ETRANGER"
   assetName: string; // ex: "ISHS COR MSCI WLD" — nom Boursorama, pas le ticker
+  isin: string | null; // "Code ISIN : XXXXXXXXXX" quand présent — résolution bien plus fiable qu'un nom abrégé
   quantity: number;
   amount: number; // montant débité/crédité en EUR
   type: "BUY" | "SELL";
@@ -61,6 +62,17 @@ const DEPOSIT_LABELS = ["VIR"]; // virements (entrants en général dans ce cont
 
 const DATE_RE = /(\d{2})\/(\d{2})\/(\d{4})/;
 const TIME_RE = /^(\d{2}):(\d{2}):(\d{2})$/;
+// "Code ISIN : LU1681038243" (ou simplement "ISIN : ...") — présent sur les
+// avis d'opéré, plus fiable que le nom abrégé Boursorama pour identifier l'actif.
+const ISIN_RE = /\bISIN\s*:?\s*([A-Z]{2}[A-Z0-9]{9}\d)\b/i;
+
+function findIsin(lines: string[], from: number, to: number): string | null {
+  for (let i = Math.max(from, 0); i < Math.min(to, lines.length); i++) {
+    const m = lines[i].match(ISIN_RE);
+    if (m) return m[1].toUpperCase();
+  }
+  return null;
+}
 
 function parseFrDate(s: string, timeStr?: string | null): Date {
   const m = s.match(DATE_RE);
@@ -144,6 +156,7 @@ function parseMultilineFormat(text: string): ParsedBoursoramaTransaction[] {
         date: parseFrDate(dateStr),
         operationLabel: label.toUpperCase(),
         assetName,
+        isin: findIsin(lines, i, i + 8),
         quantity,
         amount: parseFrAmount(amountStr),
         type: txType,
@@ -178,6 +191,7 @@ function parseSingleLineFormat(text: string): ParsedBoursoramaTransaction[] {
       date: parseFrDate(dateStr),
       operationLabel: label.toUpperCase(),
       assetName: assetName.trim(),
+      isin: null, // pas d'ISIN sur ce format (relevé compte espèces tabulaire)
       quantity: Number(qtyStr),
       amount: parseFrAmount(amountStr),
       type: txType,
@@ -266,6 +280,7 @@ function parseAvisOpereFormat(text: string): ParsedBoursoramaTransaction[] {
       date: parseFrDate(dateStr, timeStr),
       operationLabel: label.toUpperCase(),
       assetName,
+      isin: findIsin(lines, i, qtyLineIdx + 15),
       quantity,
       amount: parseFrAmount(amountStr),
       type: txType,

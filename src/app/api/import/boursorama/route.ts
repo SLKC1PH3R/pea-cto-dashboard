@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { parseBoursoramaStatement } from "@/lib/parsers/boursorama-pdf";
-import { resolveAssetName } from "@/lib/parsers/asset-mapping";
+import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
 import { searchSymbol } from "@/lib/finnhub";
 import { PDFParse } from "pdf-parse";
 
@@ -10,6 +10,7 @@ export type PreviewTransaction = {
   date: string;
   operationLabel: string;
   assetName: string;
+  isin: string | null;
   ticker: string | null;
   resolvedName: string | null;
   quantity: number;
@@ -115,49 +116,47 @@ export async function POST(req: NextRequest) {
 
       result.transactions = await Promise.all(
         parsed.transactions.map(async (tx) => {
-          const resolution = resolveAssetName(tx.assetName);
-
-          if (resolution.matched && resolution.asset.ticker) {
-            return {
-              date: tx.date.toISOString(),
-              operationLabel: tx.operationLabel,
-              assetName: tx.assetName,
-              ticker: resolution.asset.ticker,
-              resolvedName: resolution.asset.name,
-              quantity: tx.quantity,
-              amount: tx.amount,
-              type: tx.type,
-              suggested: false,
-            };
-          }
-
-          if (resolution.matched && resolution.asset.isin) {
-            // Fonds connu (nom + ISIN) mais sans ticker fiabilisé : on
-            // recherche le ticker exact via Finnhub par ISIN.
-            const suggestion = await suggestTicker(resolution.asset.isin);
-            return {
-              date: tx.date.toISOString(),
-              operationLabel: tx.operationLabel,
-              assetName: tx.assetName,
-              ticker: suggestion?.ticker ?? null,
-              resolvedName: resolution.asset.name,
-              quantity: tx.quantity,
-              amount: tx.amount,
-              type: tx.type,
-              suggested: true,
-            };
-          }
-
-          const suggestion = await suggestTicker(tx.assetName);
-          return {
+          const base = {
             date: tx.date.toISOString(),
             operationLabel: tx.operationLabel,
             assetName: tx.assetName,
-            ticker: suggestion?.ticker ?? null,
-            resolvedName: suggestion?.name ?? null,
+            isin: tx.isin,
             quantity: tx.quantity,
             amount: tx.amount,
             type: tx.type,
+          };
+
+          // 1) ISIN imprimé sur le document — identifiant le plus fiable,
+          // on le préfère systématiquement au nom abrégé Boursorama.
+          if (tx.isin) {
+            const byIsin = resolveAssetByIsin(tx.isin);
+            if (byIsin?.matched && byIsin.asset.ticker) {
+              return { ...base, ticker: byIsin.asset.ticker, resolvedName: byIsin.asset.name, suggested: false };
+            }
+            const resolvedName = byIsin?.matched ? byIsin.asset.name : null;
+            const suggestion = await suggestTicker(tx.isin);
+            if (suggestion) {
+              return { ...base, ticker: suggestion.ticker, resolvedName: resolvedName ?? suggestion.name, suggested: true };
+            }
+            // ISIN connu mais Finnhub ne le résout pas : on continue avec le nom.
+          }
+
+          // 2) Nom Boursorama reconnu dans la table statique.
+          const resolution = resolveAssetName(tx.assetName);
+          if (resolution.matched && resolution.asset.ticker) {
+            return { ...base, ticker: resolution.asset.ticker, resolvedName: resolution.asset.name, suggested: false };
+          }
+          if (resolution.matched && resolution.asset.isin) {
+            const suggestion = await suggestTicker(resolution.asset.isin);
+            return { ...base, ticker: suggestion?.ticker ?? null, resolvedName: resolution.asset.name, suggested: true };
+          }
+
+          // 3) Dernier recours : recherche Finnhub sur le nom brut.
+          const suggestion = await suggestTicker(tx.assetName);
+          return {
+            ...base,
+            ticker: suggestion?.ticker ?? null,
+            resolvedName: suggestion?.name ?? null,
             suggested: suggestion !== null,
           };
         })

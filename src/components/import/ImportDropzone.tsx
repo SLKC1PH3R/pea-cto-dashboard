@@ -14,6 +14,7 @@ type PreviewTransaction = {
   date: string;
   operationLabel: string;
   assetName: string;
+  isin: string | null;
   ticker: string | null;
   resolvedName: string | null;
   quantity: number;
