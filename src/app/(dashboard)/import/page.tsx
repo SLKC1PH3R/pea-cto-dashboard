@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ImportDropzone } from "@/components/import/ImportDropzone";
 import { ManualTransactionForm } from "@/components/import/ManualTransactionForm";
 import { DcaRuleForm } from "@/components/import/DcaRuleForm";
+import { DcaRulesManager } from "@/components/import/DcaRulesManager";
 import { AccountManager } from "@/components/import/AccountManager";
 import { TransactionsManager } from "@/components/import/TransactionsManager";
 import { DashboardNav } from "@/components/dashboard/DashboardNav";
@@ -67,6 +68,10 @@ export default async function ImportPage() {
                   passées en projection
                 </p>
                 <DcaRuleForm accounts={accounts} />
+                <div className="mt-6 border-t pt-6" style={{ borderColor: "var(--line)" }}>
+                  <h3 className="mb-1 text-[15px] font-bold text-[var(--fg)]">Plans existants</h3>
+                  <DcaRulesManager />
+                </div>
               </section>
             </>
           )}

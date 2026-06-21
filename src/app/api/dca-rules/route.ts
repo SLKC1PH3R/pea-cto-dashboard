@@ -12,11 +12,25 @@ export async function GET() {
 
   const rules = await prisma.dcaRule.findMany({
     where: { userId: session.user.id },
-    include: { asset: true, account: true },
+    include: { asset: true, account: true, transactions: { orderBy: { date: "desc" }, take: 1 }, _count: { select: { transactions: true } } },
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(rules);
+  return NextResponse.json(
+    rules.map((r) => ({
+      id: r.id,
+      accountName: r.account.name,
+      assetTicker: r.asset.ticker,
+      assetName: r.asset.name,
+      amount: r.amount.toNumber(),
+      frequency: r.frequency,
+      firstExecution: r.firstExecution.toISOString().slice(0, 10),
+      active: r.active,
+      note: r.note,
+      executionsCount: r._count.transactions,
+      lastExecutionDate: r.transactions[0]?.date.toISOString().slice(0, 10) ?? null,
+    }))
+  );
 }
 
 /**

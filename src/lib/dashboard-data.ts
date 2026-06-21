@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getQuotes } from "@/lib/finnhub";
 import { getBoursoramaQuoteByIsin, type BoursoramaQuote } from "@/lib/boursorama-quote";
 import { findIsinByTicker } from "@/lib/parsers/asset-mapping";
+import { syncAllActiveDcaRules } from "@/lib/dca-sync";
 import { currentQuantity, averageCostPrice, totalAcquisitionCost, realizedPnl } from "@/lib/finance-calculations";
 import type {
   DashboardData,
@@ -60,6 +61,10 @@ function buildMonthlyCumulativeDeposits(deposits: { amount: { toNumber(): number
 }
 
 export async function getDashboardData(userId: string, userEmail: string | null | undefined): Promise<DashboardData> {
+  // Rattrape les exécutions DCA manquantes depuis la dernière visite — pas
+  // besoin de revenir sur /import chaque semaine pour relancer un plan actif.
+  await syncAllActiveDcaRules(userId);
+
   const user = await prisma.user.findUnique({ where: { id: userId } });
 
   const accounts = await prisma.account.findMany({

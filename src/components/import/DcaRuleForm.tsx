@@ -55,6 +55,7 @@ export function DcaRuleForm({ accounts }: DcaRuleFormProps) {
         setAssetName("");
         setAmount("");
         setFirstExecution("");
+        window.dispatchEvent(new Event("dca-rule-created"));
       }
     } catch {
       setFeedback({ type: "error", message: "Erreur réseau" });
