@@ -19,6 +19,7 @@ type PreviewTransaction = {
   quantity: number;
   amount: number;
   type: "BUY" | "SELL";
+  suggested: boolean;
 };
 
 type PreviewDeposit = {
@@ -255,11 +256,20 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
                       <td className="px-2 py-2">
                         <input
                           value={r.ticker ?? ""}
-                          onChange={(e) => updateTxRow(r.key, { ticker: e.target.value.toUpperCase() })}
+                          onChange={(e) => updateTxRow(r.key, { ticker: e.target.value.toUpperCase(), suggested: false })}
                           placeholder="ticker manquant"
                           className="w-24 rounded-[6px] border px-2 py-1 text-[12px] outline-none"
-                          style={{ borderColor: r.ticker ? "var(--line)" : "var(--neg)", background: "var(--panel2)", color: "var(--fg)" }}
+                          style={{
+                            borderColor: !r.ticker ? "var(--neg)" : r.suggested ? "var(--accent2)" : "var(--line)",
+                            background: "var(--panel2)",
+                            color: "var(--fg)",
+                          }}
                         />
+                        {r.suggested && (
+                          <div className="mt-[3px] text-[10px]" style={{ color: "var(--accent2)" }}>
+                            suggestion auto · à vérifier
+                          </div>
+                        )}
                       </td>
                       <td className="px-2 py-2 text-right">
                         <input

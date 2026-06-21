@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { parseBoursoramaStatement } from "@/lib/parsers/boursorama-pdf";
 import { resolveAssetName } from "@/lib/parsers/asset-mapping";
+import { searchSymbol } from "@/lib/finnhub";
 import { PDFParse } from "pdf-parse";
 
 export type PreviewTransaction = {
@@ -14,7 +15,25 @@ export type PreviewTransaction = {
   quantity: number;
   amount: number;
   type: "BUY" | "SELL";
+  suggested: boolean; // ticker proposé automatiquement via recherche Finnhub, à vérifier avant confirmation
 };
+
+/**
+ * Quand le nom Boursorama n'est pas reconnu dans la table statique
+ * (asset-mapping.ts), on tente une recherche Finnhub sur le nom brut pour
+ * proposer un ticker — l'utilisateur reste libre de le corriger/retirer
+ * avant de confirmer l'import (rien n'est jamais assigné silencieusement).
+ */
+async function suggestTicker(assetName: string): Promise<{ ticker: string; name: string } | null> {
+  try {
+    const results = await searchSymbol(assetName);
+    const best = results.find((r) => r.symbol && r.description) ?? null;
+    if (!best) return null;
+    return { ticker: best.symbol, name: best.description };
+  } catch {
+    return null;
+  }
+}
 
 export type PreviewDeposit = {
   date: string;
@@ -92,19 +111,37 @@ export async function POST(req: NextRequest) {
         result.message = "Ce fichier semble déjà avoir été importé (même nom de fichier détecté en base).";
       }
 
-      result.transactions = parsed.transactions.map((tx) => {
-        const resolution = resolveAssetName(tx.assetName);
-        return {
-          date: tx.date.toISOString(),
-          operationLabel: tx.operationLabel,
-          assetName: tx.assetName,
-          ticker: resolution.matched ? resolution.asset.ticker : null,
-          resolvedName: resolution.matched ? resolution.asset.name : null,
-          quantity: tx.quantity,
-          amount: tx.amount,
-          type: tx.type,
-        };
-      });
+      result.transactions = await Promise.all(
+        parsed.transactions.map(async (tx) => {
+          const resolution = resolveAssetName(tx.assetName);
+          if (resolution.matched) {
+            return {
+              date: tx.date.toISOString(),
+              operationLabel: tx.operationLabel,
+              assetName: tx.assetName,
+              ticker: resolution.asset.ticker,
+              resolvedName: resolution.asset.name,
+              quantity: tx.quantity,
+              amount: tx.amount,
+              type: tx.type,
+              suggested: false,
+            };
+          }
+
+          const suggestion = await suggestTicker(tx.assetName);
+          return {
+            date: tx.date.toISOString(),
+            operationLabel: tx.operationLabel,
+            assetName: tx.assetName,
+            ticker: suggestion?.ticker ?? null,
+            resolvedName: suggestion?.name ?? null,
+            quantity: tx.quantity,
+            amount: tx.amount,
+            type: tx.type,
+            suggested: suggestion !== null,
+          };
+        })
+      );
 
       result.deposits = parsed.deposits.map((d) => ({
         date: d.date.toISOString().slice(0, 10),
@@ -115,6 +152,9 @@ export async function POST(req: NextRequest) {
       if (result.transactions.some((t) => !t.ticker) && result.status === "ok") {
         result.status = "warning";
         result.message = "Certains actifs n'ont pas pu être reconnus automatiquement — renseigne leur ticker avant de confirmer.";
+      } else if (result.transactions.some((t) => t.suggested) && result.status === "ok") {
+        result.status = "warning";
+        result.message = "Certains tickers ont été proposés automatiquement via une recherche Finnhub — vérifie-les avant de confirmer.";
       }
     } catch (err) {
       result.status = "error";
