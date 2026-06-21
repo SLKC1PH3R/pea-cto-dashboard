@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getQuotes } from "@/lib/finnhub";
+import { getBoursoramaQuoteByIsin, type BoursoramaQuote } from "@/lib/boursorama-quote";
 import { currentQuantity, averageCostPrice, totalAcquisitionCost, realizedPnl } from "@/lib/finance-calculations";
 import type {
   DashboardData,
@@ -22,19 +23,23 @@ const ASSET_TYPE_LABEL: Record<string, string> = {
 const ALLOC_COLORS = ["#a78bfa", "#c9b6fb", "#6ea8c9", "#c9a978", "#5fb89a"];
 const SECTOR_COLORS = ["#a78bfa", "#c9b6fb", "#6ea8c9", "#c9a978", "#5fb89a", "#e0a85f", "#8f8799"];
 
-type PriceSource = "live" | "manual" | "pru";
+type PriceSource = "live" | "boursorama" | "manual" | "pru";
 
 /**
- * Cours courant d'un actif : cotation Finnhub si disponible, sinon le cours
- * saisi manuellement par l'utilisateur, sinon repli sur le PRU (pas de
- * variation fabriquée — on ne connaît juste pas le prix actuel).
+ * Cours courant d'un actif, par ordre de priorité : cotation Finnhub, sinon
+ * cotation boursorama.com (repli pour les ETF européens non couverts par
+ * Finnhub en plan gratuit), sinon cours saisi manuellement par
+ * l'utilisateur, sinon repli sur le PRU (pas de variation fabriquée — on ne
+ * connaît juste pas le prix actuel).
  */
 function resolvePrice(
   quote: { c: number; dp: number } | undefined,
+  boursoramaQuote: BoursoramaQuote | undefined,
   manualPrice: { toNumber(): number } | null,
   pru: number
 ): { price: number; day: number; source: PriceSource } {
   if (quote) return { price: quote.c, day: quote.dp, source: "live" };
+  if (boursoramaQuote) return { price: boursoramaQuote.price, day: boursoramaQuote.dayPct, source: "boursorama" };
   if (manualPrice) return { price: manualPrice.toNumber(), day: 0, source: "manual" };
   return { price: pru, day: 0, source: "pru" };
 }
@@ -71,6 +76,18 @@ export async function getDashboardData(userId: string, userEmail: string | null 
   const tickers = [...new Set(allPositions.map((p) => p.asset.ticker))];
   const quotes = tickers.length > 0 ? await getQuotes(tickers) : {};
 
+  // ── Repli boursorama.com pour les actifs sans cotation Finnhub (ETF
+  // Euronext non couverts par le plan gratuit) et identifiés par un ISIN.
+  const assetsByTicker = new Map(allPositions.map((p) => [p.asset.ticker, p.asset]));
+  const missingWithIsin = [...assetsByTicker.values()].filter((a) => !quotes[a.ticker] && a.isin);
+  const boursoramaResults = await Promise.all(
+    missingWithIsin.map(async (a) => [a.ticker, await getBoursoramaQuoteByIsin(a.isin!)] as const)
+  );
+  const boursoramaQuotes: Record<string, BoursoramaQuote> = {};
+  for (const [ticker, q] of boursoramaResults) {
+    if (q) boursoramaQuotes[ticker] = q;
+  }
+
   let totalValue = 0;
   let totalCost = 0;
   let dayAbsSum = 0;
@@ -91,7 +108,12 @@ export async function getDashboardData(userId: string, userEmail: string | null 
 
     const pru = averageCostPrice(txs);
     const quote = quotes[position.asset.ticker];
-    const { price: currentPrice, day: dayPct, source: priceSource } = resolvePrice(quote, position.asset.manualPrice, pru);
+    const { price: currentPrice, day: dayPct, source: priceSource } = resolvePrice(
+      quote,
+      boursoramaQuotes[position.asset.ticker],
+      position.asset.manualPrice,
+      pru
+    );
     const marketValue = qty * currentPrice;
     const cost = totalAcquisitionCost(txs);
 
@@ -135,7 +157,7 @@ export async function getDashboardData(userId: string, userEmail: string | null 
       const qty = currentQuantity(txs);
       const quote = quotes[position.asset.ticker];
       const pru = averageCostPrice(txs);
-      const { price: currentPrice } = resolvePrice(quote, position.asset.manualPrice, pru);
+      const { price: currentPrice } = resolvePrice(quote, boursoramaQuotes[position.asset.ticker], position.asset.manualPrice, pru);
       marketValue += qty * currentPrice;
       cost += totalAcquisitionCost(txs);
       realized += realizedPnl(txs);

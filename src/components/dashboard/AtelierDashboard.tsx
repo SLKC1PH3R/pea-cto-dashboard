@@ -606,10 +606,20 @@ export function AtelierDashboard({
                             {p.priceSource !== "live" && (
                               <span
                                 className="rounded-[5px] px-[5px] py-[1px] text-[9.5px] font-semibold uppercase"
-                                style={{ background: "var(--negbg)", color: "var(--neg)" }}
-                                title={p.priceSource === "manual" ? "Cours saisi manuellement" : "Cours indisponible — repli sur le PRU"}
+                                style={
+                                  p.priceSource === "boursorama"
+                                    ? { background: "var(--posbg)", color: "var(--pos)" }
+                                    : { background: "var(--negbg)", color: "var(--neg)" }
+                                }
+                                title={
+                                  p.priceSource === "boursorama"
+                                    ? "Cours récupéré depuis boursorama.com (Finnhub ne couvre pas cette place)"
+                                    : p.priceSource === "manual"
+                                      ? "Cours saisi manuellement"
+                                      : "Cours indisponible — repli sur le PRU"
+                                }
                               >
-                                {p.priceSource === "manual" ? "manuel" : "PRU"}
+                                {p.priceSource === "boursorama" ? "bourso" : p.priceSource === "manual" ? "manuel" : "PRU"}
                               </span>
                             )}
                             <span style={num} className="text-[var(--fg2)]">{eur(p.price, 2)}</span>
