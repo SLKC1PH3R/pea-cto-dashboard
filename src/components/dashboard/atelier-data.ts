@@ -26,6 +26,7 @@ export interface Position {
   pru: number;
   price: number;
   day: number; // variation jour en %
+  priceSource: "live" | "manual" | "pru"; // origine du cours : Finnhub, saisie manuelle, ou repli sur le PRU
 }
 
 export interface Mover {

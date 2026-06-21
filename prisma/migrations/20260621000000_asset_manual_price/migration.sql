@@ -1,0 +1,2 @@
+ALTER TABLE "Asset" ADD COLUMN "manualPrice" DECIMAL(18,4);
+ALTER TABLE "Asset" ADD COLUMN "manualPriceAt" TIMESTAMP(3);

@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   type DashboardData,
   type Period,
@@ -54,6 +54,7 @@ export function AtelierDashboard({
   data: DashboardData;
   signOutAction?: () => void | Promise<void>;
 }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialPage = (searchParams.get("tab") as Page | null) ?? "synthese";
 
@@ -70,6 +71,23 @@ export function AtelierDashboard({
   const [fireRate, setFireRate] = useState(7);
   const [fireSaving, setFireSaving] = useState(false);
   const [watchlist, setWatchlist] = useState(data.watchlist);
+  const [editingPriceTicker, setEditingPriceTicker] = useState<string | null>(null);
+  const [priceInput, setPriceInput] = useState("");
+  const [savingPrice, setSavingPrice] = useState(false);
+
+  async function saveManualPrice(ticker: string) {
+    const price = parseFloat(priceInput);
+    if (!Number.isFinite(price) || price <= 0) return;
+    setSavingPrice(true);
+    await fetch("/api/assets/manual-price", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticker, price }),
+    });
+    setSavingPrice(false);
+    setEditingPriceTicker(null);
+    router.refresh();
+  }
 
   const isEmpty = data.positions.length === 0 && data.cash <= 0;
 
@@ -560,7 +578,55 @@ export function AtelierDashboard({
                       </td>
                       <td style={num} className="px-[10px] py-[11px] text-right text-[var(--fg2)]">{nf(p.qty, p.qty % 1 ? 2 : 0)}</td>
                       <td style={num} className="px-[10px] py-[11px] text-right text-[var(--fg2)]">{eur(p.pru, 2)}</td>
-                      <td style={num} className="px-[10px] py-[11px] text-right text-[var(--fg2)]">{eur(p.price, 2)}</td>
+                      <td className="px-[10px] py-[11px] text-right">
+                        {editingPriceTicker === p.ticker ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="number"
+                              step="any"
+                              autoFocus
+                              value={priceInput}
+                              onChange={(e) => setPriceInput(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && saveManualPrice(p.ticker)}
+                              className="w-20 rounded-[6px] border px-2 py-1 text-right text-[12px] outline-none"
+                              style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
+                            />
+                            <button
+                              type="button"
+                              disabled={savingPrice}
+                              onClick={() => saveManualPrice(p.ticker)}
+                              className="rounded-[6px] px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                              style={{ background: "var(--accent)" }}
+                            >
+                              ✓
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-end gap-[6px]">
+                            {p.priceSource !== "live" && (
+                              <span
+                                className="rounded-[5px] px-[5px] py-[1px] text-[9.5px] font-semibold uppercase"
+                                style={{ background: "var(--negbg)", color: "var(--neg)" }}
+                                title={p.priceSource === "manual" ? "Cours saisi manuellement" : "Cours indisponible — repli sur le PRU"}
+                              >
+                                {p.priceSource === "manual" ? "manuel" : "PRU"}
+                              </span>
+                            )}
+                            <span style={num} className="text-[var(--fg2)]">{eur(p.price, 2)}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingPriceTicker(p.ticker);
+                                setPriceInput(String(p.price));
+                              }}
+                              className="text-[11px] text-[var(--fg3)] hover:text-[var(--accent)]"
+                              title="Saisir un cours manuel"
+                            >
+                              ✎
+                            </button>
+                          </div>
+                        )}
+                      </td>
                       <td style={num} className="px-[10px] py-[11px] text-right font-bold text-[var(--fg)]">{eur(p.value)}</td>
                       <td style={{ ...num, color: p.pl >= 0 ? "var(--pos)" : "var(--neg)" }} className="px-[10px] py-[11px] text-right font-semibold">{signEur(p.pl)}</td>
                       <td style={{ ...num, color: p.totalPct >= 0 ? "var(--pos)" : "var(--neg)" }} className="px-[10px] py-[11px] text-right">{signPct(p.totalPct)}</td>

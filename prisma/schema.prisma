@@ -144,6 +144,11 @@ model Asset {
   currency        String
   assetType       AssetType
   benchmarkTicker String? // ticker de l'ETF de référence pour comparaison
+  // Cours saisi manuellement, en repli quand Finnhub ne couvre pas la place
+  // de cotation (ex: ETF Euronext sur un plan gratuit) — saisi par
+  // l'utilisateur, mis à jour à la main, jamais une donnée fabriquée.
+  manualPrice     Decimal?   @db.Decimal(18, 4)
+  manualPriceAt   DateTime?
   createdAt       DateTime   @default(now())
 
   positions Position[]

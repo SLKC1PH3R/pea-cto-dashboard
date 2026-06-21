@@ -22,6 +22,23 @@ const ASSET_TYPE_LABEL: Record<string, string> = {
 const ALLOC_COLORS = ["#a78bfa", "#c9b6fb", "#6ea8c9", "#c9a978", "#5fb89a"];
 const SECTOR_COLORS = ["#a78bfa", "#c9b6fb", "#6ea8c9", "#c9a978", "#5fb89a", "#e0a85f", "#8f8799"];
 
+type PriceSource = "live" | "manual" | "pru";
+
+/**
+ * Cours courant d'un actif : cotation Finnhub si disponible, sinon le cours
+ * saisi manuellement par l'utilisateur, sinon repli sur le PRU (pas de
+ * variation fabriquée — on ne connaît juste pas le prix actuel).
+ */
+function resolvePrice(
+  quote: { c: number; dp: number } | undefined,
+  manualPrice: { toNumber(): number } | null,
+  pru: number
+): { price: number; day: number; source: PriceSource } {
+  if (quote) return { price: quote.c, day: quote.dp, source: "live" };
+  if (manualPrice) return { price: manualPrice.toNumber(), day: 0, source: "manual" };
+  return { price: pru, day: 0, source: "pru" };
+}
+
 function buildMonthlyCumulativeDeposits(deposits: { amount: { toNumber(): number }; date: Date }[]): number[] {
   if (deposits.length === 0) return [0, 0];
   const sorted = [...deposits].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -74,8 +91,7 @@ export async function getDashboardData(userId: string, userEmail: string | null 
 
     const pru = averageCostPrice(txs);
     const quote = quotes[position.asset.ticker];
-    const currentPrice = quote?.c ?? pru;
-    const dayPct = quote?.dp ?? 0;
+    const { price: currentPrice, day: dayPct, source: priceSource } = resolvePrice(quote, position.asset.manualPrice, pru);
     const marketValue = qty * currentPrice;
     const cost = totalAcquisitionCost(txs);
 
@@ -98,6 +114,7 @@ export async function getDashboardData(userId: string, userEmail: string | null 
       pru,
       price: currentPrice,
       day: dayPct,
+      priceSource,
     });
   }
 
@@ -118,7 +135,7 @@ export async function getDashboardData(userId: string, userEmail: string | null 
       const qty = currentQuantity(txs);
       const quote = quotes[position.asset.ticker];
       const pru = averageCostPrice(txs);
-      const currentPrice = quote?.c ?? pru;
+      const { price: currentPrice } = resolvePrice(quote, position.asset.manualPrice, pru);
       marketValue += qty * currentPrice;
       cost += totalAcquisitionCost(txs);
       realized += realizedPnl(txs);
