@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getQuotes } from "@/lib/finnhub";
-import { currentQuantity, averageCostPrice, totalAcquisitionCost } from "@/lib/finance-calculations";
+import { currentQuantity, averageCostPrice, totalAcquisitionCost, realizedPnl } from "@/lib/finance-calculations";
 import type {
   DashboardData,
   Position as AtelierPosition,
@@ -9,7 +9,9 @@ import type {
   Sector,
   WatchItem,
   Transaction as AtelierTx,
+  AccountSummary,
 } from "@/components/dashboard/atelier-data";
+import { PEA_CAP } from "@/components/dashboard/atelier-data";
 
 const ASSET_TYPE_LABEL: Record<string, string> = {
   ACTION: "Actions",
@@ -98,6 +100,46 @@ export async function getDashboardData(userId: string, userEmail: string | null 
       day: dayPct,
     });
   }
+
+  // ── Résumé par compte : plafond réglementaire (PEA), capital déposé,
+  // disponible, valeur actuelle et PnL (latent + réalisé sur les ventes).
+  const accountSummaries: AccountSummary[] = accounts.map((account) => {
+    let marketValue = 0;
+    let cost = 0;
+    let realized = 0;
+    for (const position of account.positions) {
+      const txs = position.transactions.map((t) => ({
+        type: t.type,
+        quantity: t.quantity,
+        price: t.price,
+        fees: t.fees,
+        date: t.date,
+      }));
+      const qty = currentQuantity(txs);
+      const quote = quotes[position.asset.ticker];
+      const pru = averageCostPrice(txs);
+      const currentPrice = quote?.c ?? pru;
+      marketValue += qty * currentPrice;
+      cost += totalAcquisitionCost(txs);
+      realized += realizedPnl(txs);
+    }
+    const deposited = account.deposits.reduce((sum, d) => sum + d.amount.toNumber(), 0);
+    const accountCash = Math.max(deposited - cost, 0);
+    const unrealized = marketValue - cost;
+    return {
+      id: account.id,
+      name: account.name,
+      type: account.type,
+      plafond: account.type === "PEA" ? PEA_CAP : null,
+      deposited,
+      cash: accountCash,
+      marketValue,
+      total: marketValue + accountCash,
+      unrealizedPnl: unrealized,
+      realizedPnl: realized,
+      totalPnl: unrealized + realized,
+    };
+  });
 
   // ── Liquidités : approximation à partir des dépôts réels moins le coût
   // d'acquisition des positions détenues (pas de suivi direct du solde cash).
@@ -223,6 +265,7 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     tx,
     dateLabel: new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }),
     sectors,
+    accounts: accountSummaries,
     watchlist,
   };
 }

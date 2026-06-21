@@ -56,6 +56,24 @@ export interface WatchItem {
   day: number;
 }
 
+// ── Plafond réglementaire PEA (valeur fixe légale, pas une donnée fabriquée :
+// 150 000 € pour un PEA classique en France). Le CTO n'a pas de plafond.
+export const PEA_CAP = 150_000;
+
+export interface AccountSummary {
+  id: string;
+  name: string;
+  type: "PEA" | "CTO";
+  plafond: number | null;
+  deposited: number; // capital versé net (dépôts - retraits) sur ce compte
+  cash: number; // capital disponible (non investi) sur ce compte
+  marketValue: number; // valeur de marché des positions détenues
+  total: number; // marketValue + cash
+  unrealizedPnl: number; // +/- latente sur les positions actuellement détenues
+  realizedPnl: number; // +/- réalisée sur les ventes passées (prises de bénéfice/perte)
+  totalPnl: number; // unrealizedPnl + realizedPnl
+}
+
 export interface DashboardData {
   email: string;
   name: string;
@@ -80,6 +98,7 @@ export interface DashboardData {
   dateLabel: string;
   // ── Portefeuille
   sectors: Sector[];
+  accounts: AccountSummary[];
   // ── Marchés (basé sur la watchlist réelle de l'utilisateur, pas sur des indices fabriqués)
   watchlist: WatchItem[];
 }
@@ -114,15 +133,24 @@ function smooth(pts: Pt[]): string {
 const PERIOD_POINTS: Record<Period, number> = { "1M": 4, "3M": 7, "6M": 10, "1A": 14, Max: 9999 };
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 
+export interface EvolutionPoint {
+  xPct: number;
+  yPct: number;
+  value: number; // capital versé cumulé réel à ce point, en €
+  pctFromStart: number; // progression vs le premier point de la série affichée
+  dateLabel: string; // ex: "avril 2026"
+}
+
 export interface EvolutionChart {
   line: string;
   area: string;
   lastTopPct: number;
   labels: { leftPct: number; text: string }[];
   endValue: number;
+  points: EvolutionPoint[];
 }
 
-export function buildEvolution(evo: number[], period: Period): EvolutionChart {
+export function buildEvolution(evo: number[], period: Period, now: Date = new Date()): EvolutionChart {
   const n = Math.min(PERIOD_POINTS[period], evo.length);
   const series = evo.slice(evo.length - n);
   const W = 1000;
@@ -131,21 +159,32 @@ export function buildEvolution(evo: number[], period: Period): EvolutionChart {
   const mn = Math.min(...series);
   const mx = Math.max(...series);
   const rg = mx - mn || 1;
+  const L = series.length;
   const pts: Pt[] = series.map((v, i) => [
-    (series.length === 1 ? 0 : i / (series.length - 1)) * W,
+    (L === 1 ? 0 : i / (L - 1)) * W,
     padY + (H - padY * 2) * (1 - (v - mn) / rg),
   ]);
   const line = smooth(pts);
   const area = `${line} L ${W} ${H} L 0 ${H} Z`;
   const last = pts[pts.length - 1];
-  const L = series.length;
   const labCount = Math.min(6, L);
   const labels = Array.from({ length: labCount }, (_, k) => {
     const i = Math.round((k * (L - 1)) / (labCount - 1));
     const mi = (((5 - (L - 1 - i)) % 12) + 12) % 12;
     return { leftPct: +((i / (L - 1)) * 100).toFixed(1), text: MONTHS[mi] };
   });
-  return { line, area, lastTopPct: +((last[1] / H) * 100).toFixed(2), labels, endValue: series[series.length - 1] * 1000 };
+  const start = series[0] || 0;
+  const points: EvolutionPoint[] = series.map((v, i) => {
+    const pointDate = new Date(now.getFullYear(), now.getMonth() - (L - 1 - i), 1);
+    return {
+      xPct: +((L === 1 ? 0 : (i / (L - 1)) * 100)).toFixed(2),
+      yPct: +((pts[i][1] / H) * 100).toFixed(2),
+      value: v,
+      pctFromStart: start > 0 ? +(((v - start) / start) * 100).toFixed(2) : 0,
+      dateLabel: pointDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }),
+    };
+  });
+  return { line, area, lastTopPct: +((last[1] / H) * 100).toFixed(2), labels, endValue: series[series.length - 1] * 1000, points };
 }
 
 // ── Géométrie : donut allocation ───────────────────────────────

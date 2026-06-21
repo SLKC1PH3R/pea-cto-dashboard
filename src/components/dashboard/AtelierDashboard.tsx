@@ -10,7 +10,7 @@
 // d'indices de marché : on n'a pas l'historique pour les calculer honnêtement).
 // ============================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -346,7 +346,7 @@ export function AtelierDashboard({
                   ))}
                 </div>
               </div>
-              <EvolutionSvg id="atelierEvo" area={chart.area} line={chart.line} lastTopPct={chart.lastTopPct} />
+              <EvolutionSvg id="atelierEvo" area={chart.area} line={chart.line} lastTopPct={chart.lastTopPct} points={chart.points} />
               <ChartLabels labels={chart.labels} />
             </section>
 
@@ -432,6 +432,64 @@ export function AtelierDashboard({
             <KpiCard label="Capital investi" value={eur(data.invested)} sub="Coût de revient total" />
             <KpiCard label="Plus-value latente" value={signEur(pl)} sub="Depuis l'origine" valColor={pl >= 0 ? "var(--pos)" : "var(--neg)"} />
             <KpiCard label="Performance globale" value={signPct(data.totalPnlPct * 100)} sub="Depuis le premier achat" valColor={data.totalPnlPct >= 0 ? "var(--pos)" : "var(--neg)"} />
+
+            {data.accounts.length > 0 && (
+              <section className="col-span-12 rounded-[22px] border border-[var(--line)] bg-[var(--panel)] px-[26px] py-6" style={{ boxShadow: "var(--shadow)" }}>
+                <h2 className="mb-4 text-[17px] font-bold text-[var(--fg)]">Mes comptes</h2>
+                <div className="grid grid-cols-2 gap-[14px]">
+                  {data.accounts.map((acc) => {
+                    const plafondPct = acc.plafond ? Math.min((acc.deposited / acc.plafond) * 100, 100) : null;
+                    return (
+                      <div key={acc.id} className="rounded-[16px] border border-[var(--line)] bg-[var(--panel2)] p-5">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div className="flex flex-col">
+                            <span className="text-[14.5px] font-bold text-[var(--fg)]">{acc.name}</span>
+                            <span className="text-[11px] uppercase tracking-wide text-[var(--fg3)]">{acc.type}</span>
+                          </div>
+                          <div className="text-right">
+                            <span style={num} className="block text-[19px] font-bold text-[var(--fg)]">{eur(acc.total)}</span>
+                            <span className={acc.totalPnl >= 0 ? "text-[12px] font-semibold text-[var(--pos)]" : "text-[12px] font-semibold text-[var(--neg)]"}>
+                              {signEur(acc.totalPnl)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {acc.plafond && (
+                          <div className="mb-4">
+                            <div className="mb-1 flex items-center justify-between text-[11.5px] text-[var(--fg2)]">
+                              <span>Plafond PEA</span>
+                              <span style={num}>{eur(acc.deposited)} / {eur(acc.plafond)}</span>
+                            </div>
+                            <div className="h-[6px] overflow-hidden rounded-[4px] bg-[var(--track)]">
+                              <div className="h-full rounded-[4px]" style={{ width: `${plafondPct}%`, background: "var(--accent)" }} />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex flex-col gap-[2px]">
+                            <span className="text-[11px] text-[var(--fg2)]">Capital déposé</span>
+                            <span style={num} className="text-[14px] font-semibold text-[var(--fg)]">{eur(acc.deposited)}</span>
+                          </div>
+                          <div className="flex flex-col gap-[2px]">
+                            <span className="text-[11px] text-[var(--fg2)]">Capital disponible</span>
+                            <span style={num} className="text-[14px] font-semibold text-[var(--fg)]">{eur(acc.cash)}</span>
+                          </div>
+                          <div className="flex flex-col gap-[2px]">
+                            <span className="text-[11px] text-[var(--fg2)]">+/- latente</span>
+                            <span style={{ ...num, color: acc.unrealizedPnl >= 0 ? "var(--pos)" : "var(--neg)" }} className="text-[14px] font-semibold">{signEur(acc.unrealizedPnl)}</span>
+                          </div>
+                          <div className="flex flex-col gap-[2px]">
+                            <span className="text-[11px] text-[var(--fg2)]">+/- réalisée (ventes)</span>
+                            <span style={{ ...num, color: acc.realizedPnl >= 0 ? "var(--pos)" : "var(--neg)" }} className="text-[14px] font-semibold">{signEur(acc.realizedPnl)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             <section className="col-span-4 rounded-[22px] border border-[var(--line)] bg-[var(--panel)] p-6" style={{ boxShadow: "var(--shadow)" }}>
               <h2 className="mb-4 text-[17px] font-bold text-[var(--fg)]">Par classe d'actifs</h2>
@@ -849,9 +907,41 @@ export function AtelierDashboard({
 // Sous-composants présentiels
 // ============================================================
 
-function EvolutionSvg({ id, area, line, lastTopPct }: { id: string; area: string; line: string; lastTopPct: number }) {
+function EvolutionSvg({
+  id,
+  area,
+  line,
+  lastTopPct,
+  points,
+}: {
+  id: string;
+  area: string;
+  line: string;
+  lastTopPct: number;
+  points: import("./atelier-data").EvolutionPoint[];
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const el = containerRef.current;
+    if (!el || points.length === 0) return;
+    const rect = el.getBoundingClientRect();
+    const frac = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+    const idx = points.length === 1 ? 0 : Math.round(frac * (points.length - 1));
+    setHoverIdx(idx);
+  }
+
+  const hovered = hoverIdx !== null ? points[hoverIdx] : null;
+  const tooltipLeft = hovered ? Math.min(Math.max(hovered.xPct, 8), 92) : 0;
+
   return (
-    <div className="relative h-[218px]">
+    <div
+      ref={containerRef}
+      className="relative h-[218px] cursor-crosshair"
+      onPointerMove={handlePointerMove}
+      onPointerLeave={() => setHoverIdx(null)}
+    >
       <svg width="100%" height="100%" viewBox="0 0 1000 300" preserveAspectRatio="none" className="block overflow-visible">
         <defs>
           <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
@@ -861,8 +951,44 @@ function EvolutionSvg({ id, area, line, lastTopPct }: { id: string; area: string
         </defs>
         <path d={area} fill={`url(#${id})`} />
         <path d={line} fill="none" style={{ stroke: "var(--accent)" }} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        {hovered && (
+          <line
+            x1={hovered.xPct * 10}
+            x2={hovered.xPct * 10}
+            y1={0}
+            y2={300}
+            stroke="var(--fg3)"
+            strokeWidth={1}
+            strokeDasharray="4 4"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
       </svg>
       <div className="absolute -right-[5px] h-[13px] w-[13px] -translate-y-1/2 rounded-full border-[3px] border-[var(--panel)] bg-[var(--accent)]" style={{ top: `${lastTopPct}%` }} />
+      {hovered && (
+        <>
+          <div
+            className="absolute h-[11px] w-[11px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[2px] border-[var(--panel)] bg-[var(--accent)]"
+            style={{ left: `${hovered.xPct}%`, top: `${hovered.yPct}%` }}
+          />
+          <div
+            className="pointer-events-none absolute -translate-x-1/2 -translate-y-full rounded-[10px] border px-3 py-2 text-[12px] shadow-lg"
+            style={{
+              left: `${tooltipLeft}%`,
+              top: `${Math.max(hovered.yPct - 4, 0)}%`,
+              borderColor: "var(--line)",
+              background: "var(--panel)",
+              color: "var(--fg)",
+            }}
+          >
+            <div className="font-semibold capitalize">{hovered.dateLabel}</div>
+            <div style={num} className="mt-[2px] font-bold">{eur(hovered.value)}</div>
+            <div className={hovered.pctFromStart >= 0 ? "text-[var(--pos)]" : "text-[var(--neg)]"}>
+              {signPct(hovered.pctFromStart)} depuis le début de la période
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
