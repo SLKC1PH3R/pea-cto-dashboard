@@ -58,14 +58,19 @@ export async function POST(req: NextRequest) {
 
     try {
       const resolution = resolveAssetName(tx.assetName);
-      const known = resolution.matched && resolution.asset.ticker === ticker ? resolution.asset : null;
+      // On fait confiance aux métadonnées résolues (nom, ISIN, secteur...) si
+      // le nom est reconnu ET que le ticker final correspond au ticker
+      // connu — ou qu'aucun ticker canonique n'était défini (fonds identifié
+      // par son ISIN, ticker résolu dynamiquement via Finnhub à l'import).
+      const known =
+        resolution.matched && (!resolution.asset.ticker || resolution.asset.ticker === ticker) ? resolution.asset : null;
 
       const asset = await prisma.asset.upsert({
         where: { ticker },
         update: {},
         create: known
           ? {
-              ticker: known.ticker,
+              ticker,
               isin: known.isin,
               name: known.name,
               sector: known.sector,

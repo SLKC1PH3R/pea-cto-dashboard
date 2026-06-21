@@ -11,7 +11,13 @@
 export type KnownAsset = {
   /** Fragments du nom Boursorama qui permettent d'identifier l'actif (match "contains", insensible à la casse) */
   matchFragments: string[];
-  ticker: string;
+  /**
+   * Ticker Finnhub, si connu avec certitude. Laisser vide quand on connaît
+   * le fonds (nom + ISIN, fournis par l'utilisateur) mais pas le ticker
+   * exact : il sera résolu automatiquement via une recherche Finnhub par
+   * ISIN au moment de l'import, et signalé comme suggestion à vérifier.
+   */
+  ticker?: string;
   isin?: string;
   name: string;
   assetType: "ACTION" | "ETF_DISTRIBUANT" | "ETF_CAPITALISANT";
@@ -92,6 +98,25 @@ export const KNOWN_ASSETS: KnownAsset[] = [
     sector: "Technologie",
     region: "Asie",
     currency: "USD",
+  },
+  {
+    matchFragments: ["BNPP S&P500EUR ETF", "BNPP EASY S&P 500", "BNP PARIBAS EASY S&P 500"],
+    isin: "FR0011550185",
+    name: "BNP Paribas Easy S&P 500 ETF EUR (C)",
+    assetType: "ETF_CAPITALISANT",
+    sector: "Diversifié",
+    region: "USA",
+    currency: "EUR",
+    benchmarkTicker: "SPY",
+  },
+  {
+    matchFragments: ["ISHARES MSCI WORLD SWAP PEA ETF", "ISHS MSCI WORLD SWAP"],
+    isin: "IE0002XZSHO1",
+    name: "iShares MSCI World Swap PEA ETF",
+    assetType: "ETF_CAPITALISANT",
+    sector: "Diversifié",
+    region: "Monde",
+    currency: "EUR",
   },
 ];
 

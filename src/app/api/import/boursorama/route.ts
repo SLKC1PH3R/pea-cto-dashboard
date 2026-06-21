@@ -20,13 +20,15 @@ export type PreviewTransaction = {
 
 /**
  * Quand le nom Boursorama n'est pas reconnu dans la table statique
- * (asset-mapping.ts), on tente une recherche Finnhub sur le nom brut pour
- * proposer un ticker — l'utilisateur reste libre de le corriger/retirer
- * avant de confirmer l'import (rien n'est jamais assigné silencieusement).
+ * (asset-mapping.ts), ou qu'il l'est mais sans ticker connu avec certitude
+ * (fonds identifié par son ISIN uniquement), on tente une recherche Finnhub
+ * (par nom ou par ISIN, selon ce qu'on a de plus fiable) pour proposer un
+ * ticker — l'utilisateur reste libre de le corriger/retirer avant de
+ * confirmer l'import (rien n'est jamais assigné silencieusement).
  */
-async function suggestTicker(assetName: string): Promise<{ ticker: string; name: string } | null> {
+async function suggestTicker(query: string): Promise<{ ticker: string; name: string } | null> {
   try {
-    const results = await searchSymbol(assetName);
+    const results = await searchSymbol(query);
     const best = results.find((r) => r.symbol && r.description) ?? null;
     if (!best) return null;
     return { ticker: best.symbol, name: best.description };
@@ -114,7 +116,8 @@ export async function POST(req: NextRequest) {
       result.transactions = await Promise.all(
         parsed.transactions.map(async (tx) => {
           const resolution = resolveAssetName(tx.assetName);
-          if (resolution.matched) {
+
+          if (resolution.matched && resolution.asset.ticker) {
             return {
               date: tx.date.toISOString(),
               operationLabel: tx.operationLabel,
@@ -125,6 +128,23 @@ export async function POST(req: NextRequest) {
               amount: tx.amount,
               type: tx.type,
               suggested: false,
+            };
+          }
+
+          if (resolution.matched && resolution.asset.isin) {
+            // Fonds connu (nom + ISIN) mais sans ticker fiabilisé : on
+            // recherche le ticker exact via Finnhub par ISIN.
+            const suggestion = await suggestTicker(resolution.asset.isin);
+            return {
+              date: tx.date.toISOString(),
+              operationLabel: tx.operationLabel,
+              assetName: tx.assetName,
+              ticker: suggestion?.ticker ?? null,
+              resolvedName: resolution.asset.name,
+              quantity: tx.quantity,
+              amount: tx.amount,
+              type: tx.type,
+              suggested: true,
             };
           }
 
