@@ -93,8 +93,18 @@ export async function POST(req: NextRequest) {
 
   // Clés de mouvements déjà connus (en base) pour ce compte — étendues au fil
   // de l'analyse pour repérer aussi les doublons entre plusieurs fichiers
-  // déposés dans le même import (ex: un avis d'opéré + le relevé espèces du
-  // même mois, qui contiennent la même opération sous deux mises en page).
+  // déposés dans le même import, OU avec un import antérieur dans une autre
+  // requête (ex: relevé espèces confirmé un jour, avis d'opéré du même ordre
+  // importé plus tard). Trois ensembles :
+  // - seenRefKeys : toutes les références d'ordre déjà connues.
+  // - allHeuristicKeys : empreinte jour/actif/sens/montant de TOUT mouvement
+  //   déjà accepté (avec ou sans référence) — sert à repérer un doublon
+  //   arrivant SANS référence (relevé espèces).
+  // - noRefHeuristicKeys : empreinte des seuls mouvements acceptés SANS
+  //   référence — sert à repérer un doublon arrivant AVEC référence (avis
+  //   d'opéré). On ne compare jamais un avis à un autre avis sur cette seule
+  //   empreinte : deux ordres distincts peuvent légitimement partager la
+  //   même quantité/le même montant le même jour (exécution fractionnée).
   const existingTx = await prisma.transaction.findMany({
     where: { position: { accountId } },
     select: {
@@ -106,10 +116,15 @@ export async function POST(req: NextRequest) {
       position: { select: { asset: { select: { ticker: true } } } },
     },
   });
-  const seenHeuristicKeys = new Set(
+  const seenRefKeys = new Set(existingTx.filter((t) => t.externalRef).map((t) => txReferenceKey(t.externalRef!)));
+  const allHeuristicKeys = new Set(
     existingTx.map((t) => txHeuristicKey(t.position.asset.ticker, t.type, Number(t.quantity) * Number(t.price), t.date))
   );
-  const seenRefKeys = new Set(existingTx.filter((t) => t.externalRef).map((t) => txReferenceKey(t.externalRef!)));
+  const noRefHeuristicKeys = new Set(
+    existingTx
+      .filter((t) => !t.externalRef)
+      .map((t) => txHeuristicKey(t.position.asset.ticker, t.type, Number(t.quantity) * Number(t.price), t.date))
+  );
   const existingDeposits = await prisma.deposit.findMany({ where: { accountId }, select: { date: true, amount: true } });
   const seenDepKeys = new Set(existingDeposits.map((d) => depositDuplicateKey(Number(d.amount), d.date)));
 
@@ -223,41 +238,46 @@ export async function POST(req: NextRequest) {
     results.push(result);
   }
 
-  // Phase 2 : déduplication sur l'ensemble du batch, en deux passes — les
-  // lignes avec une référence d'ordre (avis d'opéré, signal fiable) d'abord,
-  // puis celles sans référence (relevé espèces, repli heuristique) ensuite.
-  // Sans cet ordre fixe, une ligne de relevé espèces traitée AVANT l'avis
-  // d'opéré correspondant enregistrerait sa propre empreinte heuristique sans
-  // que l'avis (qui ne vérifie que sa référence) ne la voie jamais — les deux
-  // finiraient importées en double. En traitant systématiquement les lignes
-  // référencées en premier, le relevé espèces (sans référence) les voit
-  // toujours et se fait correctement écarter comme doublon.
+  // Phase 2 : déduplication sur l'ensemble du batch — l'ordre de traitement
+  // n'a plus d'importance (contrairement à une version antérieure de cette
+  // logique) grâce à la distinction entre allHeuristicKeys (empreinte de
+  // tout mouvement accepté) et noRefHeuristicKeys (empreinte des seuls
+  // mouvements SANS référence). Une ligne avec référence n'est comparée
+  // qu'à noRefHeuristicKeys (jamais à un autre avis d'opéré, pour ne pas
+  // fusionner deux ordres distincts) ; une ligne sans référence est comparée
+  // à allHeuristicKeys (elle doit détecter un doublon avec n'importe quel
+  // mouvement déjà connu, avis ou relevé). Cela reste valable même si le
+  // mouvement "déjà connu" provient d'un import confirmé dans une requête
+  // précédente, puisque seenRefKeys/allHeuristicKeys/noRefHeuristicKeys
+  // partent de l'état réel en base.
   const allTx: { fileIdx: number; txIdx: number; tx: Omit<ResolvedTx, "duplicate"> }[] = [];
   fileResolvedTx.forEach((txs, fileIdx) => txs.forEach((tx, txIdx) => allTx.push({ fileIdx, txIdx, tx })));
 
-  const withRef = allTx.filter((t) => t.tx.reference);
-  const withoutRef = allTx.filter((t) => !t.tx.reference);
-
-  for (const { fileIdx, txIdx, tx } of withRef) {
+  for (const { fileIdx, txIdx, tx } of allTx) {
     if (!tx.ticker) continue;
-    const refKey = txReferenceKey(tx.reference!);
-    const duplicate = seenRefKeys.has(refKey);
-    if (!duplicate) {
-      seenRefKeys.add(refKey);
-      seenHeuristicKeys.add(txHeuristicKey(tx.ticker, tx.type, tx.amount, new Date(tx.date)));
-    }
-    fileResolvedTx[fileIdx][txIdx].duplicate = duplicate;
-  }
-
-  for (const { fileIdx, txIdx, tx } of withoutRef) {
-    if (!tx.ticker) continue;
+    const date = new Date(tx.date);
+    const exactKey = txHeuristicKey(tx.ticker, tx.type, tx.amount, date);
     // Tolérance J-1/J/J+1 : le relevé espèces utilise la date de
     // comptabilisation, qui peut différer d'un jour de la date d'exécution
     // imprimée sur l'avis d'opéré pour le même ordre.
-    const variants = txHeuristicKeyVariants(tx.ticker, tx.type, tx.amount, new Date(tx.date));
-    const duplicate = variants.some((k) => seenHeuristicKeys.has(k));
-    seenHeuristicKeys.add(txHeuristicKey(tx.ticker, tx.type, tx.amount, new Date(tx.date)));
-    fileResolvedTx[fileIdx][txIdx].duplicate = duplicate;
+    const variants = txHeuristicKeyVariants(tx.ticker, tx.type, tx.amount, date);
+
+    if (tx.reference) {
+      const refKey = txReferenceKey(tx.reference);
+      const duplicate = seenRefKeys.has(refKey) || variants.some((k) => noRefHeuristicKeys.has(k));
+      if (!duplicate) {
+        seenRefKeys.add(refKey);
+        allHeuristicKeys.add(exactKey);
+      }
+      fileResolvedTx[fileIdx][txIdx].duplicate = duplicate;
+    } else {
+      const duplicate = variants.some((k) => allHeuristicKeys.has(k));
+      if (!duplicate) {
+        allHeuristicKeys.add(exactKey);
+        noRefHeuristicKeys.add(exactKey);
+      }
+      fileResolvedTx[fileIdx][txIdx].duplicate = duplicate;
+    }
   }
 
   results.forEach((result, fileIdx) => {

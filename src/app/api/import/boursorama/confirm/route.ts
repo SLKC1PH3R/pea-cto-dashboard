@@ -66,48 +66,53 @@ export async function POST(req: NextRequest) {
       position: { select: { asset: { select: { ticker: true } } } },
     },
   });
-  const seenHeuristicKeys = new Set(
+  // Trois ensembles — voir le commentaire équivalent dans
+  // /api/import/boursorama (aperçu) pour le détail du raisonnement. L'ordre
+  // de traitement des lignes n'a plus d'importance : une ligne avec
+  // référence n'est comparée qu'aux empreintes SANS référence
+  // (noRefHeuristicKeys), jamais à un autre avis d'opéré, pour ne pas
+  // fusionner deux ordres distincts exécutés en plusieurs fois le même jour.
+  const seenRefKeys = new Set(existingTx.filter((t) => t.externalRef).map((t) => txReferenceKey(t.externalRef!)));
+  const allHeuristicKeys = new Set(
     existingTx.map((t) => txHeuristicKey(t.position.asset.ticker, t.type, Number(t.quantity) * Number(t.price), t.date))
   );
-  const seenRefKeys = new Set(existingTx.filter((t) => t.externalRef).map((t) => txReferenceKey(t.externalRef!)));
+  const noRefHeuristicKeys = new Set(
+    existingTx
+      .filter((t) => !t.externalRef)
+      .map((t) => txHeuristicKey(t.position.asset.ticker, t.type, Number(t.quantity) * Number(t.price), t.date))
+  );
   const existingDeposits = await prisma.deposit.findMany({ where: { accountId }, select: { date: true, amount: true } });
   const seenDepKeys = new Set(existingDeposits.map((d) => depositDuplicateKey(Number(d.amount), d.date)));
 
-  // Les lignes avec référence (avis d'opéré, signal fiable) sont traitées
-  // avant celles sans référence (relevé espèces, repli heuristique) — sinon
-  // un relevé espèces traité avant l'avis d'opéré correspondant enregistre sa
-  // propre empreinte sans que l'avis (qui ne vérifie que sa référence) ne la
-  // voie jamais, et les deux finissent importés en double. Voir
-  // duplicate-key.ts pour le détail (même logique que l'aperçu).
-  const orderedTransactions = [...(transactions ?? [])].sort(
-    (a, b) => (a.reference ? 0 : 1) - (b.reference ? 0 : 1)
-  );
-
-  for (const tx of orderedTransactions) {
+  for (const tx of transactions ?? []) {
     const ticker = tx.ticker?.trim().toUpperCase();
     if (!ticker) {
       errors.push(`${tx.assetName} : ticker manquant, ligne ignorée`);
       continue;
     }
 
+    const date = new Date(tx.date);
+    const exactKey = txHeuristicKey(ticker, tx.type, tx.amount, date);
+    // Tolérance J-1/J/J+1 : le relevé espèces utilise la date de
+    // comptabilisation, qui peut différer d'un jour de la date d'exécution
+    // imprimée sur l'avis d'opéré pour le même ordre.
+    const variants = txHeuristicKeyVariants(ticker, tx.type, tx.amount, date);
+
     if (tx.reference) {
       const refKey = txReferenceKey(tx.reference);
-      if (seenRefKeys.has(refKey)) {
-        errors.push(`${tx.assetName} : doublon détecté (référence d'ordre déjà en base), ligne ignorée`);
+      if (seenRefKeys.has(refKey) || variants.some((k) => noRefHeuristicKeys.has(k))) {
+        errors.push(`${tx.assetName} : doublon détecté (référence d'ordre ou mouvement déjà en base), ligne ignorée`);
         continue;
       }
       seenRefKeys.add(refKey);
-      seenHeuristicKeys.add(txHeuristicKey(ticker, tx.type, tx.amount, new Date(tx.date)));
+      allHeuristicKeys.add(exactKey);
     } else {
-      // Tolérance J-1/J/J+1 : le relevé espèces utilise la date de
-      // comptabilisation, qui peut différer d'un jour de la date d'exécution
-      // imprimée sur l'avis d'opéré pour le même ordre.
-      const variants = txHeuristicKeyVariants(ticker, tx.type, tx.amount, new Date(tx.date));
-      if (variants.some((k) => seenHeuristicKeys.has(k))) {
+      if (variants.some((k) => allHeuristicKeys.has(k))) {
         errors.push(`${tx.assetName} : doublon détecté (même jour/sens/montant déjà en base), ligne ignorée`);
         continue;
       }
-      seenHeuristicKeys.add(txHeuristicKey(ticker, tx.type, tx.amount, new Date(tx.date)));
+      allHeuristicKeys.add(exactKey);
+      noRefHeuristicKeys.add(exactKey);
     }
 
     try {

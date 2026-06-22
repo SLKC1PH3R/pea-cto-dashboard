@@ -231,9 +231,15 @@ export const KNOWN_ASSETS: KnownAsset[] = [
     currency: "EUR",
   },
   {
+    // ISIN corrigé (DE000A2QP372, confirmé sur plusieurs avis d'opéré réels)
+    // — l'ancien ISIN (DE0006289309) ne correspondait à aucun avis, ce qui
+    // faisait échouer la résolution par ISIN et retombait sur une recherche
+    // tradingview.com par nom, renvoyant le ticker EXI4.DE au lieu de
+    // EXX1.DE : achats et ventes du même fonds finissaient sur deux tickers
+    // différents et ne se compensaient jamais.
     matchFragments: ["ISHARES EURO STOXX BANKS 30-15", "ISHS ESTXX BNKS.30"],
     ticker: "EXX1.DE",
-    isin: "DE0006289309",
+    isin: "DE000A2QP372",
     name: "iShares EURO STOXX Banks 30-15 UCITS ETF (DE)",
     assetType: "ETF_DISTRIBUANT",
     sector: "Finance",
