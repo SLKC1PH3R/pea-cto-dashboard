@@ -186,6 +186,7 @@ export const KNOWN_ASSETS: KnownAsset[] = [
       "AM.PEA SP500 ESG UCIT ETF EUR",
       "AM.P.SP500 ESG ACC",
       "AM.P.SP500 ES.EUR",
+      "AM.ETF PEA SP500 U.ETF EUR FCP",
     ],
     ticker: "PE500.PA",
     isin: "FR0013412285",
@@ -198,11 +199,7 @@ export const KNOWN_ASSETS: KnownAsset[] = [
   },
   {
     // Version "classique" (non ESG) — distincte de la version Screened ci-dessus.
-    matchFragments: [
-      "AMUNDI PEA S&P 500 UCITS ETF FCP PARTS",
-      "AM.E.P.SP500 EUR",
-      "AM.ETF PEA SP500 U.ETF EUR FCP",
-    ],
+    matchFragments: ["AMUNDI PEA S&P 500 UCITS ETF FCP PARTS", "AM.E.P.SP500 EUR"],
     ticker: "PSP5.PA",
     isin: "FR0011871128",
     name: "Amundi PEA S&P 500 UCITS ETF FCP Parts -Acc-",
