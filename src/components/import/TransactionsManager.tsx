@@ -38,11 +38,13 @@ export function TransactionsManager() {
     date: "",
   });
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const [depRows, setDepRows] = useState<DepositRow[] | null>(null);
   const [editingDepId, setEditingDepId] = useState<string | null>(null);
   const [editDepValues, setEditDepValues] = useState<{ amount: string; date: string }>({ amount: "", date: "" });
   const [busyDepId, setBusyDepId] = useState<string | null>(null);
+  const [deletingAllDep, setDeletingAllDep] = useState(false);
 
   async function load() {
     const res = await fetch("/api/transactions");
@@ -95,6 +97,15 @@ export function TransactionsManager() {
     loadDeposits();
   }
 
+  async function handleDeleteAllDeposits() {
+    if (!depRows || depRows.length === 0) return;
+    if (!window.confirm(`Supprimer les ${depRows.length} dépôt(s) listé(s) ? Cette action est irréversible.`)) return;
+    setDeletingAllDep(true);
+    await Promise.all(depRows.map((r) => fetch(`/api/deposits/${r.id}`, { method: "DELETE" })));
+    setDeletingAllDep(false);
+    loadDeposits();
+  }
+
   function daysSince(dateStr: string): number {
     return Math.max(0, Math.round((Date.now() - new Date(dateStr).getTime()) / 86_400_000));
   }
@@ -128,23 +139,57 @@ export function TransactionsManager() {
     load();
   }
 
+  async function handleDeleteAll() {
+    if (!rows || rows.length === 0) return;
+    if (!window.confirm(`Supprimer les ${rows.length} transaction(s) listée(s) ? Cette action est irréversible.`)) return;
+    setDeletingAll(true);
+    await Promise.all(rows.map((r) => fetch(`/api/transactions/${r.id}`, { method: "DELETE" })));
+    setDeletingAll(false);
+    load();
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex gap-1 rounded-[11px] border border-[var(--line)] bg-[var(--panel2)] p-1" style={{ width: "fit-content" }}>
-        {([
-          ["transactions", "Transactions"],
-          ["depots", "Dépôts"],
-        ] as [Tab, string][]).map(([key, label]) => (
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex gap-1 rounded-[11px] border border-[var(--line)] bg-[var(--panel2)] p-1" style={{ width: "fit-content" }}>
+          {([
+            ["transactions", "Transactions"],
+            ["depots", "Dépôts"],
+          ] as [Tab, string][]).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className="rounded-[8px] px-3 py-[6px] text-[12.5px] font-semibold"
+              style={{ background: tab === key ? "var(--accent)" : "transparent", color: tab === key ? "#fff" : "var(--fg2)" }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "transactions" && rows && rows.length > 0 && (
           <button
-            key={key}
             type="button"
-            onClick={() => setTab(key)}
-            className="rounded-[8px] px-3 py-[6px] text-[12.5px] font-semibold"
-            style={{ background: tab === key ? "var(--accent)" : "transparent", color: tab === key ? "#fff" : "var(--fg2)" }}
+            disabled={deletingAll}
+            onClick={handleDeleteAll}
+            className="rounded-[9px] border px-3 py-[6px] text-[12px] font-semibold disabled:opacity-50"
+            style={{ borderColor: "var(--neg)", color: "var(--neg)" }}
           >
-            {label}
+            {deletingAll ? "Suppression…" : `Tout supprimer (${rows.length})`}
           </button>
-        ))}
+        )}
+        {tab === "depots" && depRows && depRows.length > 0 && (
+          <button
+            type="button"
+            disabled={deletingAllDep}
+            onClick={handleDeleteAllDeposits}
+            className="rounded-[9px] border px-3 py-[6px] text-[12px] font-semibold disabled:opacity-50"
+            style={{ borderColor: "var(--neg)", color: "var(--neg)" }}
+          >
+            {deletingAllDep ? "Suppression…" : `Tout supprimer (${depRows.length})`}
+          </button>
+        )}
       </div>
 
       {tab === "transactions" ? (
