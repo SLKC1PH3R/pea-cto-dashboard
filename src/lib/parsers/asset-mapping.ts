@@ -50,7 +50,14 @@ export const KNOWN_ASSETS: KnownAsset[] = [
     benchmarkTicker: "QQQ",
   },
   {
-    matchFragments: ["ISHS VI-ISMWSPE", "ISHARES MSCI WORLD SMALL CAP"],
+    // "ISHS VI-ISMWSPE" décodé est en fait "iShares MSCI World Swap PEA Eur"
+    // (le fonds WPEA.PA ci-dessous) et non ce fonds Small Cap — fragment
+    // historiquement mal assigné (présent dès le commit initial, avant même
+    // l'ajout de WPEA.PA), repéré car il causait des doublons achat/vente :
+    // chaque relevé espèces (sans ISIN, résolution par nom) classait les
+    // achats de WPEA.PA dans IUSN.DE, alors que l'avis d'opéré correspondant
+    // (avec ISIN) résolvait correctement la même opération en WPEA.PA.
+    matchFragments: ["ISHARES MSCI WORLD SMALL CAP"],
     ticker: "IUSN.DE",
     isin: "IE00BF4RFH31",
     name: "iShares MSCI World Small Cap",
@@ -111,7 +118,7 @@ export const KNOWN_ASSETS: KnownAsset[] = [
     benchmarkTicker: "SPY",
   },
   {
-    matchFragments: ["ISHARES MSCI WORLD SWAP PEA ETF", "ISHS MSCI WORLD SWAP"],
+    matchFragments: ["ISHARES MSCI WORLD SWAP PEA ETF", "ISHS MSCI WORLD SWAP", "ISHS VI-ISMWSPE"],
     ticker: "WPEA.PA",
     isin: "IE0002XZSHO1",
     name: "iShares MSCI World Swap PEA ETF",
