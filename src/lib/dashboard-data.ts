@@ -15,6 +15,7 @@ import type {
   WatchItem,
   Transaction as AtelierTx,
   AccountSummary,
+  ClosedPosition,
 } from "@/components/dashboard/atelier-data";
 import { PEA_CAP } from "@/components/dashboard/atelier-data";
 
@@ -118,7 +119,9 @@ export async function getDashboardData(userId: string, userEmail: string | null 
   let totalValue = 0;
   let totalCost = 0;
   let dayAbsSum = 0;
+  let totalRealizedPnl = 0; // plus/moins-values réalisées cumulées, positions ouvertes ET clôturées
   const atelierPositions: AtelierPosition[] = [];
+  const closedPositions: ClosedPosition[] = []; // positions intégralement vendues (qty = 0)
   const allocMap = new Map<string, number>();
   const sectorMap = new Map<string, number>();
 
@@ -131,7 +134,25 @@ export async function getDashboardData(userId: string, userEmail: string | null 
       date: t.date,
     }));
     const qty = currentQuantity(txs);
-    if (qty <= 0) continue; // position clôturée (vendue intégralement)
+    // Le P&L réalisé (sur les ventes passées) compte même si la position
+    // reste partiellement ouverte (ex: WPEA.PA vendu puis racheté) — il ne
+    // faut donc pas se limiter aux positions intégralement clôturées.
+    const realizedOnThis = realizedPnl(txs);
+    totalRealizedPnl += realizedOnThis;
+
+    if (qty <= 0) {
+      // Position clôturée (vendue intégralement) — pas de cours/valeur de
+      // marché à afficher, mais la plus-value réalisée doit rester visible.
+      if (realizedOnThis !== 0) {
+        closedPositions.push({
+          name: position.asset.name,
+          ticker: position.asset.ticker,
+          sector: position.asset.sector ?? "Autre",
+          realizedPnl: realizedOnThis,
+        });
+      }
+      continue;
+    }
 
     const pru = averageCostPrice(txs);
     const quote = quotes[position.asset.ticker];
@@ -381,5 +402,7 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     sectors,
     accounts: accountSummaries,
     watchlist,
+    totalRealizedPnl,
+    closedPositions: closedPositions.sort((a, b) => b.realizedPnl - a.realizedPnl),
   };
 }

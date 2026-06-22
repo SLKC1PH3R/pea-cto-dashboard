@@ -194,6 +194,17 @@ export const KNOWN_ASSETS: KnownAsset[] = [
       "AM.P.SP500 ESG ACC",
       "AM.P.SP500 ES.EUR",
       "AM.ETF PEA SP500 U.ETF EUR FCP",
+      // "AM.E.P.SP500 EUR" — abréviation utilisée sur les relevés espèces
+      // 2023 pour CE fonds (confirmé par l'ISIN FR0013412285 sur les avis
+      // d'opéré correspondants, même jour/quantité/montant). Ce fragment
+      // était mal assigné à PSP5.PA ci-dessous, qui n'a jamais réellement
+      // été traité par l'utilisateur : comme le relevé espèces n'a pas
+      // d'ISIN, ces lignes résolvaient (par nom) sur PSP5.PA tandis que
+      // l'avis d'opéré du même ordre résolvait (par ISIN) sur PE500.PA —
+      // deux tickers différents pour le même ordre, donc la déduplication
+      // (basée sur le ticker) ne les reconnaissait jamais comme doublons et
+      // créait une position fantôme PSP5.PA qui n'existe pas chez Boursorama.
+      "AM.E.P.SP500 EUR",
     ],
     ticker: "PE500.PA",
     isin: "FR0013412285",
@@ -205,8 +216,11 @@ export const KNOWN_ASSETS: KnownAsset[] = [
     benchmarkTicker: "SPY",
   },
   {
-    // Version "classique" (non ESG) — distincte de la version Screened ci-dessus.
-    matchFragments: ["AMUNDI PEA S&P 500 UCITS ETF FCP PARTS", "AM.E.P.SP500 EUR"],
+    // Version "classique" (non ESG) — distincte de la version Screened
+    // ci-dessus. Fragment "AM.E.P.SP500 EUR" retiré (voir commentaire sur
+    // PE500.PA ci-dessus) : aucun document réel de l'utilisateur n'évoque ce
+    // fonds avec certitude, seul le fragment générique reste en réserve.
+    matchFragments: ["AMUNDI PEA S&P 500 UCITS ETF FCP PARTS"],
     ticker: "PSP5.PA",
     isin: "FR0011871128",
     name: "Amundi PEA S&P 500 UCITS ETF FCP Parts -Acc-",

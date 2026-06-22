@@ -62,6 +62,13 @@ export interface WatchItem {
 // 150 000 € pour un PEA classique en France). Le CTO n'a pas de plafond.
 export const PEA_CAP = 150_000;
 
+export interface ClosedPosition {
+  name: string;
+  ticker: string;
+  sector: string;
+  realizedPnl: number; // plus/moins-value réalisée totale sur cet actif (position intégralement vendue)
+}
+
 export interface AccountSummary {
   id: string;
   name: string;
@@ -101,6 +108,14 @@ export interface DashboardData {
   // ── Portefeuille
   sectors: Sector[];
   accounts: AccountSummary[];
+  // Plus-value réalisée cumulée (positions ouvertes + clôturées) et détail
+  // des positions intégralement vendues — l'enveloppe PEA ne plafonne que
+  // les versements bruts (Account.deposits / AccountSummary.deposited),
+  // pas les plus-values réinvesties : un retrait partiel suivi d'un rachat
+  // ne "libère" donc pas de plafond, mais un gain réalisé puis réinvesti
+  // n'en consomme pas non plus.
+  totalRealizedPnl: number;
+  closedPositions: ClosedPosition[];
   // ── Marchés (basé sur la watchlist réelle de l'utilisateur, pas sur des indices fabriqués)
   watchlist: WatchItem[];
 }

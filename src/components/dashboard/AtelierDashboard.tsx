@@ -694,6 +694,45 @@ export function AtelierDashboard({
                 </tbody>
               </table>
             </section>
+
+            <section className="col-span-12 overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--panel)]" style={{ boxShadow: "var(--shadow)" }}>
+              <div className="flex items-center justify-between px-6 pb-[14px] pt-[22px]">
+                <h2 className="text-[17px] font-bold text-[var(--fg)]">Ventes &amp; positions clôturées</h2>
+                <span className={data.totalRealizedPnl >= 0 ? "text-[13px] font-bold text-[var(--pos)]" : "text-[13px] font-bold text-[var(--neg)]"} style={num}>
+                  Plus-value réalisée totale&nbsp;: {signEur(data.totalRealizedPnl)}
+                </span>
+              </div>
+              <p className="px-6 pb-3 text-[11.5px] text-[var(--fg3)]">
+                Cumul sur toutes les ventes (positions ouvertes et clôturées). Ces gains réinvestis dans le PEA sont internes à l'enveloppe : ils ne consomment pas le plafond de versement.
+              </p>
+              {data.closedPositions.length === 0 ? (
+                <p className="px-6 pb-6 text-[13px] text-[var(--fg2)]">Aucune position intégralement clôturée pour l'instant.</p>
+              ) : (
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="border-y border-[var(--line)]">
+                      <th className="px-6 py-[9px] text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--fg3)]">Actif</th>
+                      <th className="px-[10px] py-[9px] text-right text-[11px] font-semibold uppercase tracking-wide text-[var(--fg3)]">Plus-value réalisée</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.closedPositions.map((cp) => (
+                      <tr key={cp.ticker} className="border-b border-[var(--line)] hover:bg-[var(--panel2)]">
+                        <td className="px-6 py-[11px]">
+                          <div className="flex flex-col leading-[1.25]">
+                            <span className="font-bold text-[var(--fg)]">{cp.name}</span>
+                            <span className="text-[11px] text-[var(--fg3)]">{cp.ticker} · {cp.sector}</span>
+                          </div>
+                        </td>
+                        <td style={{ ...num, color: cp.realizedPnl >= 0 ? "var(--pos)" : "var(--neg)" }} className="px-[10px] py-[11px] text-right font-semibold">
+                          {signEur(cp.realizedPnl)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
           </div>
         )}
 

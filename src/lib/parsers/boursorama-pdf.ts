@@ -185,7 +185,11 @@ function parseSingleLineFormat(text: string): ParsedBoursoramaTransaction[] {
   const results: ParsedBoursoramaTransaction[] = [];
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
 
-  const lineRe = /^(\d{2}\/\d{2}\/\d{4})\s+(ACHAT ETRANGER|ACHAT COMPTANT|VENTE ETRANGER|VENTE COMPTANT)\s+(\d+)\s+(.+?)\s+([\d.\s]*\d,\d{2})\s*$/i;
+  // La quantité peut comporter un espace comme séparateur de milliers (ex:
+  // "28/01/2025 ACHAT ETRANGER 4 115 ISHS VI-ISMWSPE EO 24 086,74" — sans
+  // quoi seul "4" serait capturé). Le nom de la valeur démarre toujours par
+  // une lettre majuscule, ce qui ancre la fin du groupe quantité.
+  const lineRe = /^(\d{2}\/\d{2}\/\d{4})\s+(ACHAT ETRANGER|ACHAT COMPTANT|VENTE ETRANGER|VENTE COMPTANT)\s+([\d\s]+?)\s+([A-Z].+?)\s+([\d.\s]*\d,\d{2})\s*$/i;
 
   for (const line of lines) {
     const m = line.match(lineRe);
@@ -201,7 +205,7 @@ function parseSingleLineFormat(text: string): ParsedBoursoramaTransaction[] {
       assetName: assetName.trim(),
       isin: null, // pas d'ISIN sur ce format (relevé compte espèces tabulaire)
       reference: null, // pas de référence d'ordre sur ce format
-      quantity: Number(qtyStr),
+      quantity: Number(qtyStr.replace(/\s/g, "")),
       amount: parseFrAmount(amountStr),
       type: txType,
       sourceText: line,
@@ -259,9 +263,17 @@ function parseAvisOpereFormat(text: string): ParsedBoursoramaTransaction[] {
       // AM.EURO STOX.50 UC.ET.DR EUR C Référence : 010115845027") — chaque
       // ordre exécuté a la sienne, même si plusieurs ordres du même jour
       // partagent la même quantité/le même cours (exécution fractionnée).
-      const qtyMatch = l.match(/^(\d+)\s+(.+?)\s+R[ée]f[ée]rence\s*:\s*(\S+)/i);
+      // La quantité peut comporter un espace comme séparateur de milliers
+      // (ex: "1 326 ISHS VI-ISMWSPE EOA Référence : ...", format "ETR" des
+      // fonds étrangers) — le groupe quantité est donc [\d\s]+ et non \d+
+      // seul, sous peine de ne capturer que le "1" et de faire dériver tout
+      // le reste (nom + référence) sur l'amorce du nom de la valeur. Le nom
+      // de la valeur démarre toujours par une lettre majuscule, ce qui sert
+      // d'ancre pour que le moteur regex étende la quantité jusqu'au bon
+      // endroit (backtracking).
+      const qtyMatch = l.match(/^([\d\s]+?)\s+([A-Z][^\n]*?)\s+R[ée]f[ée]rence\s*:\s*(\S+)/);
       if (qtyMatch) {
-        quantity = Number(qtyMatch[1]);
+        quantity = Number(qtyMatch[1].replace(/\s/g, ""));
         assetName = qtyMatch[2].trim();
         reference = qtyMatch[3].trim();
         qtyLineIdx = j;

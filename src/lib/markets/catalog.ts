@@ -9,6 +9,10 @@ export type CatalogAsset = {
   type: "ACTION" | "ETF";
   region: string;
   sector?: string;
+  isin?: string;
+  currency?: string;
+  /** Noms/abréviations alternatifs pour la recherche (ex: nom Boursorama abrégé) */
+  aliases?: string[];
 };
 
 export const MARKET_CATALOG: CatalogAsset[] = [

@@ -24,16 +24,22 @@ export function txHeuristicKey(ticker: string, type: "BUY" | "SELL", amount: num
 }
 
 /**
- * Variantes de la clé heuristique sur J-1/J/J+1 — le relevé espèces utilise
- * la date de comptabilisation (de règlement), qui peut tomber un jour après
- * la date d'exécution réelle imprimée sur l'avis d'opéré pour le même ordre
- * (ex: exécution le 08/05 au soir, comptabilisée le 09/05). À utiliser
- * uniquement en lecture (recherche de doublon), jamais pour enregistrer une
- * clé, sous peine de masquer de vrais ordres distincts à un jour d'écart.
+ * Variantes de la clé heuristique sur une fenêtre de J-4 à J+4 — le relevé
+ * espèces utilise la date de comptabilisation (règlement), qui peut tomber
+ * plusieurs jours après la date d'exécution réelle imprimée sur l'avis
+ * d'opéré pour le même ordre. Un ±1 jour ne suffit pas : un ordre exécuté un
+ * vendredi soir et réglé le lundi (week-end) crée déjà un écart de 3 jours
+ * calendaires, et un jour férié peut encore l'allonger — cas réel observé
+ * (achat ESE.PA exécuté le 01/08/2025, comptabilisé le 04/08/2025) qui
+ * faisait passer le doublon inaperçu et gonflait artificiellement la
+ * quantité détenue. À utiliser uniquement en lecture (recherche de doublon),
+ * jamais pour enregistrer une clé, sous peine de masquer de vrais ordres
+ * distincts à quelques jours d'écart.
  */
 export function txHeuristicKeyVariants(ticker: string, type: "BUY" | "SELL", amount: number, date: Date): string[] {
   const oneDay = 24 * 60 * 60 * 1000;
-  return [-1, 0, 1].map((offset) => txHeuristicKey(ticker, type, amount, new Date(date.getTime() + offset * oneDay)));
+  const offsets = [-4, -3, -2, -1, 0, 1, 2, 3, 4];
+  return offsets.map((offset) => txHeuristicKey(ticker, type, amount, new Date(date.getTime() + offset * oneDay)));
 }
 
 export function txReferenceKey(reference: string): string {
