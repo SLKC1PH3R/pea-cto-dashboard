@@ -25,6 +25,8 @@
  *    1 392,75 EUR 8,36 EUR 1 401,11 EUR
  *    (variante étrangère "ETR" : le libellé "Montant net au débit de votre
  *    compte" et son montant sont chacun sur leur propre ligne)
+ *    (une VENTE crédite le compte : le libellé devient "Montant net au
+ *    crédit de votre compte" — même structure, on accepte les deux)
  *
  * Les variantes partagent les mêmes libellés d'opération (ACHAT ETRANGER,
  * ACHAT COMPTANT, VENTE ETRANGER, VENTE COMPTANT, VIR ...) mais une mise en
@@ -262,7 +264,7 @@ function parseAvisOpereFormat(text: string): ParsedBoursoramaTransaction[] {
     // même ligne que l'en-tête, ou seules sur la ligne suivante).
     let amountStr: string | null = null;
     for (let j = qtyLineIdx; j < Math.min(qtyLineIdx + 15, lines.length); j++) {
-      if (!/montant net au d[ée]bit de votre compte/i.test(lines[j])) continue;
+      if (!/montant net au (?:d[ée]bit|cr[ée]dit) de votre compte/i.test(lines[j])) continue;
 
       for (let k = j; k < Math.min(j + 3, lines.length); k++) {
         const amountMatches = [...lines[k].matchAll(/(\d{1,3}(?:[.\s]\d{3})*,\d{2})/g)];
