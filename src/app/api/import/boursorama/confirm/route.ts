@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
-import { txDuplicateKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
+import { txHeuristicKey, txReferenceKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
 
 type ConfirmTransaction = {
   filename: string;
@@ -10,6 +10,7 @@ type ConfirmTransaction = {
   operationLabel: string;
   assetName: string;
   isin?: string | null;
+  reference?: string | null;
   ticker: string;
   quantity: number;
   amount: number;
@@ -56,11 +57,19 @@ export async function POST(req: NextRequest) {
   // comme doublon aurait été cochée quand même.
   const existingTx = await prisma.transaction.findMany({
     where: { position: { accountId } },
-    select: { date: true, quantity: true, price: true, type: true, position: { select: { asset: { select: { ticker: true } } } } },
+    select: {
+      date: true,
+      quantity: true,
+      price: true,
+      type: true,
+      externalRef: true,
+      position: { select: { asset: { select: { ticker: true } } } },
+    },
   });
-  const seenTxKeys = new Set(
-    existingTx.map((t) => txDuplicateKey(t.position.asset.ticker, t.type, Number(t.quantity) * Number(t.price), t.date))
+  const seenHeuristicKeys = new Set(
+    existingTx.map((t) => txHeuristicKey(t.position.asset.ticker, t.type, Number(t.quantity) * Number(t.price), t.date))
   );
+  const seenRefKeys = new Set(existingTx.filter((t) => t.externalRef).map((t) => txReferenceKey(t.externalRef!)));
   const existingDeposits = await prisma.deposit.findMany({ where: { accountId }, select: { date: true, amount: true } });
   const seenDepKeys = new Set(existingDeposits.map((d) => depositDuplicateKey(Number(d.amount), d.date)));
 
@@ -71,12 +80,25 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const txKey = txDuplicateKey(ticker, tx.type, tx.amount, new Date(tx.date));
-    if (seenTxKeys.has(txKey)) {
-      errors.push(`${tx.assetName} : doublon détecté (même jour/sens/montant déjà en base), ligne ignorée`);
-      continue;
+    // Une référence d'ordre présente fait foi (signal fiable) ; sinon repli
+    // sur jour/actif/sens/montant — voir duplicate-key.ts pour le détail du
+    // piège évité (gros ordre exécuté en plusieurs fois au même cours).
+    const heuristicKey = txHeuristicKey(ticker, tx.type, tx.amount, new Date(tx.date));
+    if (tx.reference) {
+      const refKey = txReferenceKey(tx.reference);
+      if (seenRefKeys.has(refKey)) {
+        errors.push(`${tx.assetName} : doublon détecté (référence d'ordre déjà en base), ligne ignorée`);
+        continue;
+      }
+      seenRefKeys.add(refKey);
+      seenHeuristicKeys.add(heuristicKey);
+    } else {
+      if (seenHeuristicKeys.has(heuristicKey)) {
+        errors.push(`${tx.assetName} : doublon détecté (même jour/sens/montant déjà en base), ligne ignorée`);
+        continue;
+      }
+      seenHeuristicKeys.add(heuristicKey);
     }
-    seenTxKeys.add(txKey);
 
     try {
       // L'ISIN imprimé sur le document (le plus fiable) prime sur le nom
@@ -125,6 +147,7 @@ export async function POST(req: NextRequest) {
           fees: 0,
           date: new Date(tx.date),
           sourceDocument: tx.filename,
+          externalRef: tx.reference ?? undefined,
           note: `Importé depuis PDF — ${tx.operationLabel}`,
         },
       });

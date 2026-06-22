@@ -39,6 +39,11 @@ export type ParsedBoursoramaTransaction = {
   operationLabel: string; // ex: "ACHAT ETRANGER"
   assetName: string; // ex: "ISHS COR MSCI WLD" — nom Boursorama, pas le ticker
   isin: string | null; // "Code ISIN : XXXXXXXXXX" quand présent — résolution bien plus fiable qu'un nom abrégé
+  // Référence d'ordre ("Référence : 010115845027"), uniquement sur les avis
+  // d'opéré — identifiant le plus fiable pour la déduplication, car un même
+  // ordre peut être exécuté en plusieurs fois au même jour/cours (donc même
+  // quantité/montant) sans être un doublon d'import.
+  reference: string | null;
   quantity: number;
   amount: number; // montant débité/crédité en EUR
   type: "BUY" | "SELL";
@@ -159,6 +164,7 @@ function parseMultilineFormat(text: string): ParsedBoursoramaTransaction[] {
         operationLabel: label.toUpperCase(),
         assetName,
         isin: findIsin(lines, i, i + 8),
+        reference: null, // pas de référence d'ordre sur ce format ("Extrait de compte")
         quantity,
         amount: parseFrAmount(amountStr),
         type: txType,
@@ -194,6 +200,7 @@ function parseSingleLineFormat(text: string): ParsedBoursoramaTransaction[] {
       operationLabel: label.toUpperCase(),
       assetName: assetName.trim(),
       isin: null, // pas d'ISIN sur ce format (relevé compte espèces tabulaire)
+      reference: null, // pas de référence d'ordre sur ce format
       quantity: Number(qtyStr),
       amount: parseFrAmount(amountStr),
       type: txType,
@@ -228,6 +235,7 @@ function parseAvisOpereFormat(text: string): ParsedBoursoramaTransaction[] {
     let timeStr: string | null = null;
     let quantity: number | null = null;
     let assetName: string | null = null;
+    let reference: string | null = null;
     let qtyLineIdx = -1;
 
     for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
@@ -247,10 +255,15 @@ function parseAvisOpereFormat(text: string): ParsedBoursoramaTransaction[] {
         }
       }
 
-      const qtyMatch = l.match(/^(\d+)\s+(.+?)\s+R[ée]f[ée]rence\s*:/i);
+      // La référence d'ordre suit directement sur la même ligne (ex: "1
+      // AM.EURO STOX.50 UC.ET.DR EUR C Référence : 010115845027") — chaque
+      // ordre exécuté a la sienne, même si plusieurs ordres du même jour
+      // partagent la même quantité/le même cours (exécution fractionnée).
+      const qtyMatch = l.match(/^(\d+)\s+(.+?)\s+R[ée]f[ée]rence\s*:\s*(\S+)/i);
       if (qtyMatch) {
         quantity = Number(qtyMatch[1]);
         assetName = qtyMatch[2].trim();
+        reference = qtyMatch[3].trim();
         qtyLineIdx = j;
         break;
       }
@@ -283,6 +296,7 @@ function parseAvisOpereFormat(text: string): ParsedBoursoramaTransaction[] {
       operationLabel: label.toUpperCase(),
       assetName,
       isin: findIsin(lines, i, qtyLineIdx + 15),
+      reference,
       quantity,
       amount: parseFrAmount(amountStr),
       type: txType,

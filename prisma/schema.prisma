@@ -205,6 +205,12 @@ model Transaction {
   dcaRule    DcaRule? @relation(fields: [dcaRuleId], references: [id])
   // Si importée depuis un PDF, on garde une trace pour éviter les doublons
   sourceDocument String? // ex: nom du fichier PDF original
+  // Référence d'ordre Boursorama ("Référence : 010115845027"), présente sur
+  // les avis d'opéré — identifiant le plus fiable pour détecter un doublon
+  // d'import, car deux ordres distincts du même jour peuvent avoir exactement
+  // la même quantité/le même montant (ex: un gros ordre exécuté en plusieurs
+  // fois au même cours).
+  externalRef String?
   createdAt  DateTime @default(now())
 
   relatedFees Fee[]

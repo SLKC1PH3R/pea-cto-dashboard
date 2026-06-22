@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { parseBoursoramaStatement } from "@/lib/parsers/boursorama-pdf";
 import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
 import { findTradingViewSymbolByIsin, findTradingViewSymbolByName, toDisplayTicker } from "@/lib/tradingview-quote";
-import { txDuplicateKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
+import { txHeuristicKey, txReferenceKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
 import { PDFParse } from "pdf-parse";
 
 export type PreviewTransaction = {
@@ -12,6 +12,7 @@ export type PreviewTransaction = {
   operationLabel: string;
   assetName: string;
   isin: string | null;
+  reference: string | null;
   ticker: string | null;
   resolvedName: string | null;
   quantity: number;
@@ -96,11 +97,19 @@ export async function POST(req: NextRequest) {
   // même mois, qui contiennent la même opération sous deux mises en page).
   const existingTx = await prisma.transaction.findMany({
     where: { position: { accountId } },
-    select: { date: true, quantity: true, price: true, type: true, position: { select: { asset: { select: { ticker: true } } } } },
+    select: {
+      date: true,
+      quantity: true,
+      price: true,
+      type: true,
+      externalRef: true,
+      position: { select: { asset: { select: { ticker: true } } } },
+    },
   });
-  const seenTxKeys = new Set(
-    existingTx.map((t) => txDuplicateKey(t.position.asset.ticker, t.type, Number(t.quantity) * Number(t.price), t.date))
+  const seenHeuristicKeys = new Set(
+    existingTx.map((t) => txHeuristicKey(t.position.asset.ticker, t.type, Number(t.quantity) * Number(t.price), t.date))
   );
+  const seenRefKeys = new Set(existingTx.filter((t) => t.externalRef).map((t) => txReferenceKey(t.externalRef!)));
   const existingDeposits = await prisma.deposit.findMany({ where: { accountId }, select: { date: true, amount: true } });
   const seenDepKeys = new Set(existingDeposits.map((d) => depositDuplicateKey(Number(d.amount), d.date)));
 
@@ -143,6 +152,7 @@ export async function POST(req: NextRequest) {
             operationLabel: tx.operationLabel,
             assetName: tx.assetName,
             isin: tx.isin,
+            reference: tx.reference,
             quantity: tx.quantity,
             amount: tx.amount,
             type: tx.type,
@@ -184,14 +194,29 @@ export async function POST(req: NextRequest) {
         })
       );
 
-      // Marque comme doublon tout mouvement dont la clé jour/actif/sens/montant
-      // a déjà été vue (en base, ou plus haut dans ce même import) — et
-      // l'enregistre pour repérer aussi les doublons entre fichiers de ce batch.
+      // Doublon = même référence d'ordre déjà vue (signal fiable, propre aux
+      // avis d'opéré) ; quand aucune référence n'est disponible (relevé
+      // espèces), on retombe sur jour/actif/sens/montant — utile uniquement
+      // pour détecter le même mouvement décrit dans un format différent. Une
+      // référence présente et inédite n'est PAS un doublon même si son
+      // empreinte heuristique coïncide avec une autre ligne (cas d'un même
+      // gros ordre exécuté en plusieurs fois au même cours le même jour).
       result.transactions = resolvedTransactions.map((tx) => {
         if (!tx.ticker) return { ...tx, duplicate: false };
-        const key = txDuplicateKey(tx.ticker, tx.type, tx.amount, new Date(tx.date));
-        const duplicate = seenTxKeys.has(key);
-        seenTxKeys.add(key);
+        const heuristicKey = txHeuristicKey(tx.ticker, tx.type, tx.amount, new Date(tx.date));
+
+        if (tx.reference) {
+          const refKey = txReferenceKey(tx.reference);
+          const duplicate = seenRefKeys.has(refKey);
+          if (!duplicate) {
+            seenRefKeys.add(refKey);
+            seenHeuristicKeys.add(heuristicKey);
+          }
+          return { ...tx, duplicate };
+        }
+
+        const duplicate = seenHeuristicKeys.has(heuristicKey);
+        seenHeuristicKeys.add(heuristicKey);
         return { ...tx, duplicate };
       });
 
