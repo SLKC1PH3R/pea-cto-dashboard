@@ -47,6 +47,30 @@ const PAGES: { key: Page; label: string }[] = [
 
 const num = { fontFamily: "var(--font-num, 'Space Grotesk', system-ui)" } as const;
 
+// Badges pour l'origine d'un cours quand ce n'est pas une cotation Finnhub
+// temps réel — "OK" = source de marché alternative fiable (juste pas
+// couverte par Finnhub gratuit), le reste = à interpréter avec prudence.
+type PriceSourceKey = "live" | "yahoo" | "tradingview" | "boursorama" | "manual" | "pru" | "none";
+const PRICE_SOURCE_OK = new Set<PriceSourceKey>(["yahoo", "tradingview", "boursorama"]);
+const PRICE_SOURCE_LABEL: Record<PriceSourceKey, string> = {
+  live: "",
+  yahoo: "Yahoo",
+  tradingview: "TV",
+  boursorama: "bourso",
+  manual: "manuel",
+  pru: "PRU",
+  none: "",
+};
+const PRICE_SOURCE_TITLE: Record<PriceSourceKey, string> = {
+  live: "",
+  yahoo: "Cours récupéré depuis Yahoo Finance (Finnhub ne couvre pas cette place)",
+  tradingview: "Cours récupéré depuis tradingview.com (Finnhub ne couvre pas cette place)",
+  boursorama: "Cours récupéré depuis boursorama.com (Finnhub ne couvre pas cette place)",
+  manual: "Cours saisi manuellement",
+  pru: "Cours indisponible — repli sur le PRU",
+  none: "",
+};
+
 export function AtelierDashboard({
   data,
   signOutAction,
@@ -625,21 +649,13 @@ export function AtelierDashboard({
                               <span
                                 className="rounded-[5px] px-[5px] py-[1px] text-[9.5px] font-semibold uppercase"
                                 style={
-                                  p.priceSource === "tradingview" || p.priceSource === "boursorama"
+                                  PRICE_SOURCE_OK.has(p.priceSource)
                                     ? { background: "var(--posbg)", color: "var(--pos)" }
                                     : { background: "var(--negbg)", color: "var(--neg)" }
                                 }
-                                title={
-                                  p.priceSource === "tradingview"
-                                    ? "Cours récupéré depuis tradingview.com (Finnhub ne couvre pas cette place)"
-                                    : p.priceSource === "boursorama"
-                                      ? "Cours récupéré depuis boursorama.com (Finnhub ne couvre pas cette place)"
-                                      : p.priceSource === "manual"
-                                        ? "Cours saisi manuellement"
-                                        : "Cours indisponible — repli sur le PRU"
-                                }
+                                title={PRICE_SOURCE_TITLE[p.priceSource]}
                               >
-                                {p.priceSource === "tradingview" ? "TV" : p.priceSource === "boursorama" ? "bourso" : p.priceSource === "manual" ? "manuel" : "PRU"}
+                                {PRICE_SOURCE_LABEL[p.priceSource]}
                               </span>
                             )}
                             <span style={num} className="text-[var(--fg2)]">{eur(p.price, 2)}</span>
@@ -735,12 +751,12 @@ export function AtelierDashboard({
                                 <span
                                   className="rounded-[5px] px-[5px] py-[1px] text-[9.5px] font-semibold uppercase"
                                   style={
-                                    w.priceSource === "tradingview" || w.priceSource === "boursorama"
+                                    PRICE_SOURCE_OK.has(w.priceSource)
                                       ? { background: "var(--posbg)", color: "var(--pos)" }
                                       : { background: "var(--negbg)", color: "var(--neg)" }
                                   }
                                 >
-                                  {w.priceSource === "tradingview" ? "TV" : w.priceSource === "boursorama" ? "bourso" : "manuel"}
+                                  {PRICE_SOURCE_LABEL[w.priceSource]}
                                 </span>
                               )}
                               <span style={num} className="font-semibold text-[var(--fg)]">{w.price !== null ? eur(w.price, 2) : "—"}</span>
