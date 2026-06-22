@@ -625,19 +625,21 @@ export function AtelierDashboard({
                               <span
                                 className="rounded-[5px] px-[5px] py-[1px] text-[9.5px] font-semibold uppercase"
                                 style={
-                                  p.priceSource === "boursorama"
+                                  p.priceSource === "tradingview" || p.priceSource === "boursorama"
                                     ? { background: "var(--posbg)", color: "var(--pos)" }
                                     : { background: "var(--negbg)", color: "var(--neg)" }
                                 }
                                 title={
-                                  p.priceSource === "boursorama"
-                                    ? "Cours récupéré depuis boursorama.com (Finnhub ne couvre pas cette place)"
-                                    : p.priceSource === "manual"
-                                      ? "Cours saisi manuellement"
-                                      : "Cours indisponible — repli sur le PRU"
+                                  p.priceSource === "tradingview"
+                                    ? "Cours récupéré depuis tradingview.com (Finnhub ne couvre pas cette place)"
+                                    : p.priceSource === "boursorama"
+                                      ? "Cours récupéré depuis boursorama.com (Finnhub ne couvre pas cette place)"
+                                      : p.priceSource === "manual"
+                                        ? "Cours saisi manuellement"
+                                        : "Cours indisponible — repli sur le PRU"
                                 }
                               >
-                                {p.priceSource === "boursorama" ? "bourso" : p.priceSource === "manual" ? "manuel" : "PRU"}
+                                {p.priceSource === "tradingview" ? "TV" : p.priceSource === "boursorama" ? "bourso" : p.priceSource === "manual" ? "manuel" : "PRU"}
                               </span>
                             )}
                             <span style={num} className="text-[var(--fg2)]">{eur(p.price, 2)}</span>
@@ -733,12 +735,12 @@ export function AtelierDashboard({
                                 <span
                                   className="rounded-[5px] px-[5px] py-[1px] text-[9.5px] font-semibold uppercase"
                                   style={
-                                    w.priceSource === "boursorama"
+                                    w.priceSource === "tradingview" || w.priceSource === "boursorama"
                                       ? { background: "var(--posbg)", color: "var(--pos)" }
                                       : { background: "var(--negbg)", color: "var(--neg)" }
                                   }
                                 >
-                                  {w.priceSource === "boursorama" ? "bourso" : "manuel"}
+                                  {w.priceSource === "tradingview" ? "TV" : w.priceSource === "boursorama" ? "bourso" : "manuel"}
                                 </span>
                               )}
                               <span style={num} className="font-semibold text-[var(--fg)]">{w.price !== null ? eur(w.price, 2) : "—"}</span>

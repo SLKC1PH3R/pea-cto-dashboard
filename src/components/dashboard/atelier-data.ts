@@ -26,7 +26,7 @@ export interface Position {
   pru: number;
   price: number;
   day: number; // variation jour en %
-  priceSource: "live" | "boursorama" | "manual" | "pru"; // origine du cours : Finnhub, boursorama.com, saisie manuelle, ou repli sur le PRU
+  priceSource: "live" | "tradingview" | "boursorama" | "manual" | "pru"; // origine du cours : Finnhub, tradingview.com, boursorama.com, saisie manuelle, ou repli sur le PRU
 }
 
 export interface Mover {
@@ -55,7 +55,7 @@ export interface WatchItem {
   cls: string;
   price: number | null;
   day: number | null;
-  priceSource: "live" | "boursorama" | "manual" | "none";
+  priceSource: "live" | "tradingview" | "boursorama" | "manual" | "none";
 }
 
 // ── Plafond réglementaire PEA (valeur fixe légale, pas une donnée fabriquée :

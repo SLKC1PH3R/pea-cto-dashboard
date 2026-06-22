@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { parseBoursoramaStatement } from "@/lib/parsers/boursorama-pdf";
 import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
-import { searchSymbol } from "@/lib/finnhub";
+import { findTradingViewSymbolByIsin, findTradingViewSymbolByName, toDisplayTicker } from "@/lib/tradingview-quote";
 import { PDFParse } from "pdf-parse";
 
 export type PreviewTransaction = {
@@ -16,26 +16,31 @@ export type PreviewTransaction = {
   quantity: number;
   amount: number;
   type: "BUY" | "SELL";
-  suggested: boolean; // ticker proposé automatiquement via recherche Finnhub, à vérifier avant confirmation
+  suggested: boolean; // ticker proposé automatiquement via recherche tradingview.com, à vérifier avant confirmation
 };
 
 /**
  * Quand le nom Boursorama n'est pas reconnu dans la table statique
  * (asset-mapping.ts), ou qu'il l'est mais sans ticker connu avec certitude
- * (fonds identifié par son ISIN uniquement), on tente une recherche Finnhub
- * (par nom ou par ISIN, selon ce qu'on a de plus fiable) pour proposer un
- * ticker — l'utilisateur reste libre de le corriger/retirer avant de
- * confirmer l'import (rien n'est jamais assigné silencieusement).
+ * (fonds identifié par son ISIN uniquement), on tente une recherche
+ * tradingview.com (par ISIN ou par nom, selon ce qu'on a de plus fiable)
+ * pour proposer un ticker — tradingview.com couvre nettement mieux les
+ * petits fonds UCITS PEA français que Finnhub. L'utilisateur reste libre de
+ * corriger/retirer la suggestion avant de confirmer l'import (rien n'est
+ * jamais assigné silencieusement). Mise en cache mémoire le temps de la
+ * requête : un même fonds apparaît souvent des dizaines de fois dans un gros
+ * relevé, pas besoin de le rechercher à chaque ligne.
  */
-async function suggestTicker(query: string): Promise<{ ticker: string; name: string } | null> {
-  try {
-    const results = await searchSymbol(query);
-    const best = results.find((r) => r.symbol && r.description) ?? null;
-    if (!best) return null;
-    return { ticker: best.symbol, name: best.description };
-  } catch {
-    return null;
-  }
+const suggestCache = new Map<string, { ticker: string; name: string } | null>();
+
+async function suggestTicker(query: string, byIsin: boolean): Promise<{ ticker: string; name: string } | null> {
+  const cacheKey = `${byIsin ? "isin" : "name"}:${query.toUpperCase()}`;
+  if (suggestCache.has(cacheKey)) return suggestCache.get(cacheKey)!;
+
+  const sym = byIsin ? await findTradingViewSymbolByIsin(query) : await findTradingViewSymbolByName(query);
+  const result = sym ? { ticker: toDisplayTicker(sym), name: sym.description } : null;
+  suggestCache.set(cacheKey, result);
+  return result;
 }
 
 export type PreviewDeposit = {
@@ -134,11 +139,11 @@ export async function POST(req: NextRequest) {
               return { ...base, ticker: byIsin.asset.ticker, resolvedName: byIsin.asset.name, suggested: false };
             }
             const resolvedName = byIsin?.matched ? byIsin.asset.name : null;
-            const suggestion = await suggestTicker(tx.isin);
+            const suggestion = await suggestTicker(tx.isin, true);
             if (suggestion) {
               return { ...base, ticker: suggestion.ticker, resolvedName: resolvedName ?? suggestion.name, suggested: true };
             }
-            // ISIN connu mais Finnhub ne le résout pas : on continue avec le nom.
+            // ISIN connu mais introuvable sur tradingview.com : on continue avec le nom.
           }
 
           // 2) Nom Boursorama reconnu dans la table statique.
@@ -147,12 +152,12 @@ export async function POST(req: NextRequest) {
             return { ...base, ticker: resolution.asset.ticker, resolvedName: resolution.asset.name, suggested: false };
           }
           if (resolution.matched && resolution.asset.isin) {
-            const suggestion = await suggestTicker(resolution.asset.isin);
+            const suggestion = await suggestTicker(resolution.asset.isin, true);
             return { ...base, ticker: suggestion?.ticker ?? null, resolvedName: resolution.asset.name, suggested: true };
           }
 
-          // 3) Dernier recours : recherche Finnhub sur le nom brut.
-          const suggestion = await suggestTicker(tx.assetName);
+          // 3) Dernier recours : recherche tradingview.com sur le nom brut.
+          const suggestion = await suggestTicker(tx.assetName, false);
           return {
             ...base,
             ticker: suggestion?.ticker ?? null,
@@ -173,7 +178,7 @@ export async function POST(req: NextRequest) {
         result.message = "Certains actifs n'ont pas pu être reconnus automatiquement — renseigne leur ticker avant de confirmer.";
       } else if (result.transactions.some((t) => t.suggested) && result.status === "ok") {
         result.status = "warning";
-        result.message = "Certains tickers ont été proposés automatiquement via une recherche Finnhub — vérifie-les avant de confirmer.";
+        result.message = "Certains tickers ont été proposés automatiquement via une recherche tradingview.com — vérifie-les avant de confirmer.";
       }
     } catch (err) {
       result.status = "error";

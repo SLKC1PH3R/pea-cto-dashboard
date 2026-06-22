@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getQuotes } from "@/lib/finnhub";
 import { getBoursoramaQuoteByIsin, type BoursoramaQuote } from "@/lib/boursorama-quote";
+import { getTradingViewQuoteByIsin, type TradingViewQuote } from "@/lib/tradingview-quote";
 import { findIsinByTicker } from "@/lib/parsers/asset-mapping";
 import { syncAllActiveDcaRules } from "@/lib/dca-sync";
 import { currentQuantity, averageCostPrice, totalAcquisitionCost, realizedPnl } from "@/lib/finance-calculations";
@@ -25,22 +26,25 @@ const ASSET_TYPE_LABEL: Record<string, string> = {
 const ALLOC_COLORS = ["#a78bfa", "#c9b6fb", "#6ea8c9", "#c9a978", "#5fb89a"];
 const SECTOR_COLORS = ["#a78bfa", "#c9b6fb", "#6ea8c9", "#c9a978", "#5fb89a", "#e0a85f", "#8f8799"];
 
-type PriceSource = "live" | "boursorama" | "manual" | "pru";
+type PriceSource = "live" | "tradingview" | "boursorama" | "manual" | "pru";
 
 /**
  * Cours courant d'un actif, par ordre de priorité : cotation Finnhub, sinon
- * cotation boursorama.com (repli pour les ETF européens non couverts par
- * Finnhub en plan gratuit), sinon cours saisi manuellement par
- * l'utilisateur, sinon repli sur le PRU (pas de variation fabriquée — on ne
- * connaît juste pas le prix actuel).
+ * tradingview.com (repli le plus complet pour les ETF européens non
+ * couverts par Finnhub en plan gratuit), sinon boursorama.com (n'indexe pas
+ * tous les fonds), sinon cours saisi manuellement par l'utilisateur, sinon
+ * repli sur le PRU (pas de variation fabriquée — on ne connaît juste pas le
+ * prix actuel).
  */
 function resolvePrice(
   quote: { c: number; dp: number } | undefined,
+  tradingViewQuote: TradingViewQuote | undefined,
   boursoramaQuote: BoursoramaQuote | undefined,
   manualPrice: { toNumber(): number } | null,
   pru: number
 ): { price: number; day: number; source: PriceSource } {
   if (quote) return { price: quote.c, day: quote.dp, source: "live" };
+  if (tradingViewQuote) return { price: tradingViewQuote.price, day: tradingViewQuote.dayPct, source: "tradingview" };
   if (boursoramaQuote) return { price: boursoramaQuote.price, day: boursoramaQuote.dayPct, source: "boursorama" };
   if (manualPrice) return { price: manualPrice.toNumber(), day: 0, source: "manual" };
   return { price: pru, day: 0, source: "pru" };
@@ -82,12 +86,23 @@ export async function getDashboardData(userId: string, userEmail: string | null 
   const tickers = [...new Set(allPositions.map((p) => p.asset.ticker))];
   const quotes = tickers.length > 0 ? await getQuotes(tickers) : {};
 
-  // ── Repli boursorama.com pour les actifs sans cotation Finnhub (ETF
-  // Euronext non couverts par le plan gratuit) et identifiés par un ISIN.
+  // ── Repli tradingview.com puis boursorama.com pour les actifs sans
+  // cotation Finnhub (ETF Euronext non couverts par le plan gratuit),
+  // identifiés par leur ISIN.
   const assetsByTicker = new Map(allPositions.map((p) => [p.asset.ticker, p.asset]));
   const missingWithIsin = [...assetsByTicker.values()].filter((a) => !quotes[a.ticker] && a.isin);
+
+  const tradingViewResults = await Promise.all(
+    missingWithIsin.map(async (a) => [a.ticker, await getTradingViewQuoteByIsin(a.isin!)] as const)
+  );
+  const tradingViewQuotes: Record<string, TradingViewQuote> = {};
+  for (const [ticker, q] of tradingViewResults) {
+    if (q) tradingViewQuotes[ticker] = q;
+  }
+
+  const stillMissing = missingWithIsin.filter((a) => !tradingViewQuotes[a.ticker]);
   const boursoramaResults = await Promise.all(
-    missingWithIsin.map(async (a) => [a.ticker, await getBoursoramaQuoteByIsin(a.isin!)] as const)
+    stillMissing.map(async (a) => [a.ticker, await getBoursoramaQuoteByIsin(a.isin!)] as const)
   );
   const boursoramaQuotes: Record<string, BoursoramaQuote> = {};
   for (const [ticker, q] of boursoramaResults) {
@@ -116,6 +131,7 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     const quote = quotes[position.asset.ticker];
     const { price: currentPrice, day: dayPct, source: priceSource } = resolvePrice(
       quote,
+      tradingViewQuotes[position.asset.ticker],
       boursoramaQuotes[position.asset.ticker],
       position.asset.manualPrice,
       pru
@@ -163,7 +179,13 @@ export async function getDashboardData(userId: string, userEmail: string | null 
       const qty = currentQuantity(txs);
       const quote = quotes[position.asset.ticker];
       const pru = averageCostPrice(txs);
-      const { price: currentPrice } = resolvePrice(quote, boursoramaQuotes[position.asset.ticker], position.asset.manualPrice, pru);
+      const { price: currentPrice } = resolvePrice(
+        quote,
+        tradingViewQuotes[position.asset.ticker],
+        boursoramaQuotes[position.asset.ticker],
+        position.asset.manualPrice,
+        pru
+      );
       marketValue += qty * currentPrice;
       cost += totalAcquisitionCost(txs);
       realized += realizedPnl(txs);
@@ -224,16 +246,29 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     }))
     .sort((a, b) => b.pct - a.pct);
 
-  // ── Watchlist : cotation Finnhub si disponible, sinon repli boursorama.com
-  // (via l'ISIN connu du ticker), sinon cours saisi manuellement — un actif
-  // suivi reste affiché même sans aucune source automatique (prix "—").
+  // ── Watchlist : cotation Finnhub si disponible, sinon repli tradingview.com
+  // puis boursorama.com (via l'ISIN connu du ticker), sinon cours saisi
+  // manuellement — un actif suivi reste affiché même sans aucune source
+  // automatique (prix "—").
   const watchlistItems = await prisma.watchlistItem.findMany({ where: { userId } });
   const watchlistTickers = watchlistItems.map((w) => w.ticker);
   const watchlistQuotes = watchlistTickers.length > 0 ? await getQuotes(watchlistTickers) : {};
 
   const watchlistMissing = watchlistItems.filter((w) => !watchlistQuotes[w.ticker]);
-  const watchlistBoursoramaResults = await Promise.all(
+  const watchlistTradingViewResults = await Promise.all(
     watchlistMissing.map(async (w) => {
+      const isin = findIsinByTicker(w.ticker);
+      return [w.ticker, isin ? await getTradingViewQuoteByIsin(isin) : null] as const;
+    })
+  );
+  const watchlistTradingViewQuotes: Record<string, TradingViewQuote> = {};
+  for (const [ticker, q] of watchlistTradingViewResults) {
+    if (q) watchlistTradingViewQuotes[ticker] = q;
+  }
+
+  const watchlistStillMissing = watchlistMissing.filter((w) => !watchlistTradingViewQuotes[w.ticker]);
+  const watchlistBoursoramaResults = await Promise.all(
+    watchlistStillMissing.map(async (w) => {
       const isin = findIsinByTicker(w.ticker);
       return [w.ticker, isin ? await getBoursoramaQuoteByIsin(isin) : null] as const;
     })
@@ -245,8 +280,10 @@ export async function getDashboardData(userId: string, userEmail: string | null 
 
   const watchlist: WatchItem[] = watchlistItems.map((w) => {
     const q = watchlistQuotes[w.ticker];
+    const tvq = watchlistTradingViewQuotes[w.ticker];
     const bq = watchlistBoursoramaQuotes[w.ticker];
     if (q) return { name: w.name ?? w.ticker, ticker: w.ticker, cls: "Watchlist", price: q.c, day: q.dp, priceSource: "live" };
+    if (tvq) return { name: w.name ?? w.ticker, ticker: w.ticker, cls: "Watchlist", price: tvq.price, day: tvq.dayPct, priceSource: "tradingview" };
     if (bq) return { name: w.name ?? w.ticker, ticker: w.ticker, cls: "Watchlist", price: bq.price, day: bq.dayPct, priceSource: "boursorama" };
     if (w.manualPrice) {
       return { name: w.name ?? w.ticker, ticker: w.ticker, cls: "Watchlist", price: w.manualPrice.toNumber(), day: 0, priceSource: "manual" };

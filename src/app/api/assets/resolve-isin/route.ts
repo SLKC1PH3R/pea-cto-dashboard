@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
-import { searchSymbol } from "@/lib/finnhub";
+import { findTradingViewSymbolByIsin, toDisplayTicker } from "@/lib/tradingview-quote";
 
 /**
  * Résout un ticker à partir d'un ISIN — table statique connue en priorité,
- * sinon recherche Finnhub. Utilisé par les formulaires de saisie manuelle
+ * sinon recherche tradingview.com (couvre nettement mieux les fonds UCITS
+ * PEA français que Finnhub). Utilisé par les formulaires de saisie manuelle
  * (transaction, DCA) pour éviter de deviner/taper le ticker à la main.
  */
 export async function GET(req: NextRequest) {
@@ -29,19 +30,14 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  try {
-    const results = await searchSymbol(isin);
-    const best = results.find((r) => r.symbol && r.description);
-    if (!best) {
-      return NextResponse.json({ error: "Aucun résultat pour cet ISIN" }, { status: 404 });
-    }
-    return NextResponse.json({
-      ticker: best.symbol,
-      name: known?.matched ? known.asset.name : best.description,
-      assetType: known?.matched ? known.asset.assetType : undefined,
-      currency: known?.matched ? known.asset.currency : undefined,
-    });
-  } catch {
-    return NextResponse.json({ error: "Recherche Finnhub indisponible" }, { status: 502 });
+  const sym = await findTradingViewSymbolByIsin(isin);
+  if (!sym) {
+    return NextResponse.json({ error: "Aucun résultat pour cet ISIN" }, { status: 404 });
   }
+  return NextResponse.json({
+    ticker: toDisplayTicker(sym),
+    name: known?.matched ? known.asset.name : sym.description,
+    assetType: known?.matched ? known.asset.assetType : undefined,
+    currency: known?.matched ? known.asset.currency : sym.currency ?? undefined,
+  });
 }
