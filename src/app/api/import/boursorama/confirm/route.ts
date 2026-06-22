@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
+import { txDuplicateKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
 
 type ConfirmTransaction = {
   filename: string;
@@ -50,12 +51,32 @@ export async function POST(req: NextRequest) {
   let depositsCreated = 0;
   const errors: string[] = [];
 
+  // Filet de sécurité : revérifie les doublons par contenu au moment de la
+  // confirmation (même logique que l'aperçu), au cas où une ligne signalée
+  // comme doublon aurait été cochée quand même.
+  const existingTx = await prisma.transaction.findMany({
+    where: { position: { accountId } },
+    select: { date: true, quantity: true, price: true, type: true, position: { select: { asset: { select: { ticker: true } } } } },
+  });
+  const seenTxKeys = new Set(
+    existingTx.map((t) => txDuplicateKey(t.position.asset.ticker, t.type, Number(t.quantity) * Number(t.price), t.date))
+  );
+  const existingDeposits = await prisma.deposit.findMany({ where: { accountId }, select: { date: true, amount: true } });
+  const seenDepKeys = new Set(existingDeposits.map((d) => depositDuplicateKey(Number(d.amount), d.date)));
+
   for (const tx of transactions ?? []) {
     const ticker = tx.ticker?.trim().toUpperCase();
     if (!ticker) {
       errors.push(`${tx.assetName} : ticker manquant, ligne ignorée`);
       continue;
     }
+
+    const txKey = txDuplicateKey(ticker, tx.type, tx.amount, new Date(tx.date));
+    if (seenTxKeys.has(txKey)) {
+      errors.push(`${tx.assetName} : doublon détecté (même jour/sens/montant déjà en base), ligne ignorée`);
+      continue;
+    }
+    seenTxKeys.add(txKey);
 
     try {
       // L'ISIN imprimé sur le document (le plus fiable) prime sur le nom
@@ -115,6 +136,13 @@ export async function POST(req: NextRequest) {
   }
 
   for (const dep of deposits ?? []) {
+    const depKey = depositDuplicateKey(dep.amount, new Date(dep.date));
+    if (seenDepKeys.has(depKey)) {
+      errors.push(`Dépôt ${dep.label} : doublon détecté (même jour/montant déjà en base), ligne ignorée`);
+      continue;
+    }
+    seenDepKeys.add(depKey);
+
     try {
       await prisma.deposit.create({
         data: {

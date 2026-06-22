@@ -21,12 +21,14 @@ type PreviewTransaction = {
   amount: number;
   type: "BUY" | "SELL";
   suggested: boolean;
+  duplicate: boolean;
 };
 
 type PreviewDeposit = {
   date: string;
   label: string;
   amount: number;
+  duplicate: boolean;
 };
 
 type PreviewFileResult = {
@@ -92,10 +94,20 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
             errors.push({ filename: r.filename, message: r.message ?? "" });
           }
           r.transactions.forEach((t, ti) => {
-            newTxRows.push({ ...t, filename: r.filename, included: !!t.ticker && !r.alreadyImported, key: `${fi}-${ti}` });
+            newTxRows.push({
+              ...t,
+              filename: r.filename,
+              included: !!t.ticker && !r.alreadyImported && !t.duplicate,
+              key: `${fi}-${ti}`,
+            });
           });
           r.deposits.forEach((d, di) => {
-            newDepRows.push({ ...d, filename: r.filename, included: !r.alreadyImported, key: `${fi}-d${di}` });
+            newDepRows.push({
+              ...d,
+              filename: r.filename,
+              included: !r.alreadyImported && !d.duplicate,
+              key: `${fi}-d${di}`,
+            });
           });
         });
 
@@ -271,6 +283,11 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
                             suggestion auto · à vérifier
                           </div>
                         )}
+                        {r.duplicate && (
+                          <div className="mt-[3px] text-[10px]" style={{ color: "var(--neg)" }}>
+                            doublon probable · déjà importé
+                          </div>
+                        )}
                       </td>
                       <td className="px-2 py-2 text-right">
                         <input
@@ -318,7 +335,14 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
                         <input type="checkbox" checked={r.included} onChange={(e) => updateDepRow(r.key, { included: e.target.checked })} />
                       </td>
                       <td className="px-2 py-2 text-[var(--fg2)]">{r.date}</td>
-                      <td className="px-2 py-2 text-[var(--fg)]">{r.label}</td>
+                      <td className="px-2 py-2 text-[var(--fg)]">
+                        {r.label}
+                        {r.duplicate && (
+                          <div className="mt-[3px] text-[10px]" style={{ color: "var(--neg)" }}>
+                            doublon probable · déjà importé
+                          </div>
+                        )}
+                      </td>
                       <td className="px-2 py-2 text-right text-[var(--fg2)]">{r.amount.toLocaleString("fr-FR")} €</td>
                     </tr>
                   ))}
