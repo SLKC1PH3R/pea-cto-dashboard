@@ -33,9 +33,17 @@ import {
 import { MarketsBrowser } from "@/components/markets/MarketsBrowser";
 import { GoalForm } from "@/components/objectifs/GoalForm";
 import { ProfileSettings } from "@/components/profile/ProfileSettings";
+import { AccountManager } from "@/components/import/AccountManager";
+import { ImportDropzone } from "@/components/import/ImportDropzone";
+import { ManualTransactionForm } from "@/components/import/ManualTransactionForm";
+import { DcaRuleForm } from "@/components/import/DcaRuleForm";
+import { DcaRulesManager } from "@/components/import/DcaRulesManager";
+import { TransactionsManager } from "@/components/import/TransactionsManager";
 
 type SortKey = "name" | "value" | "day" | "totalPct" | "weight";
-type Page = "synthese" | "portefeuille" | "marches" | "objectifs";
+type Page = "synthese" | "portefeuille" | "marches" | "objectifs" | "import";
+
+type AccountRow = { id: string; name: string; type: string; broker: string | null };
 
 const PERIODS: Period[] = ["1M", "3M", "6M", "1A", "Max"];
 const PAGES: { key: Page; label: string }[] = [
@@ -43,6 +51,7 @@ const PAGES: { key: Page; label: string }[] = [
   { key: "portefeuille", label: "Portefeuille" },
   { key: "marches", label: "Marchés" },
   { key: "objectifs", label: "Objectifs" },
+  { key: "import", label: "Importer" },
 ];
 
 const num = { fontFamily: "var(--font-num, 'Space Grotesk', system-ui)" } as const;
@@ -73,9 +82,11 @@ const PRICE_SOURCE_TITLE: Record<PriceSourceKey, string> = {
 
 export function AtelierDashboard({
   data,
+  accounts,
   signOutAction,
 }: {
   data: DashboardData;
+  accounts: AccountRow[];
   signOutAction?: () => void | Promise<void>;
 }) {
   const router = useRouter();
@@ -284,12 +295,6 @@ export function AtelierDashboard({
                   {p.label}
                 </button>
               ))}
-              <Link
-                href="/import"
-                className="rounded-[10px] px-[15px] py-[7px] text-[13px] font-medium text-[var(--fg2)] hover:text-[var(--fg)]"
-              >
-                Importer
-              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-[14px]">
@@ -336,13 +341,13 @@ export function AtelierDashboard({
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <Link
-                href="/import"
+              <button
+                onClick={() => setPage("import")}
                 className="rounded-[11px] px-4 py-[9px] text-[13px] font-semibold text-white"
                 style={{ background: "linear-gradient(140deg, var(--accent), var(--accent2))" }}
               >
                 Aller à l'import
-              </Link>
+              </button>
               <button
                 onClick={dismissBanner}
                 aria-label="Fermer"
@@ -1045,6 +1050,60 @@ export function AtelierDashboard({
             </section>
           </div>
         )}
+
+        {/* ════════════════════════ IMPORTER ════════════════════════ */}
+        {page === "import" && (
+          <div className="grid grid-cols-12 gap-[18px]">
+            <div className="col-span-6 flex flex-col gap-[18px]">
+              <AccountManager accounts={accounts} />
+
+              {accounts.length === 0 ? (
+                <p className="text-[13px] text-[var(--fg2)]">
+                  Crée un compte ci-dessus pour pouvoir importer un PDF, saisir une transaction ou créer un plan DCA.
+                </p>
+              ) : (
+                <>
+                  <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+                    <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Import PDF</h2>
+                    <p className="mb-4 text-[12.5px] text-[var(--fg2)]">
+                      Confirmations Boursorama — glisse-dépose plusieurs fichiers à la fois
+                    </p>
+                    <ImportDropzone accounts={accounts} />
+                  </section>
+
+                  <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+                    <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Saisie manuelle</h2>
+                    <p className="mb-4 text-[12.5px] text-[var(--fg2)]">
+                      Pour les transactions Trade Republic ou tout actif non couvert par l'import PDF
+                    </p>
+                    <ManualTransactionForm accounts={accounts} />
+                  </section>
+
+                  <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+                    <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Plan d&apos;investissement programmé (DCA)</h2>
+                    <p className="mb-4 text-[12.5px] text-[var(--fg2)]">
+                      Pour les plans récurrents Trade Republic — génère automatiquement les exécutions
+                      passées en projection
+                    </p>
+                    <DcaRuleForm accounts={accounts} />
+                    <div className="mt-6 border-t pt-6" style={{ borderColor: "var(--line)" }}>
+                      <h3 className="mb-1 text-[15px] font-bold text-[var(--fg)]">Plans existants</h3>
+                      <DcaRulesManager />
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
+
+            <div className="col-span-6">
+              <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+                <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Transactions enregistrées</h2>
+                <p className="mb-4 text-[12.5px] text-[var(--fg2)]">Modifie ou supprime une ligne en cas d&apos;erreur d&apos;import ou de saisie</p>
+                <TransactionsManager />
+              </section>
+            </div>
+          </div>
+        )}
       </div>
 
       {isEmpty && bannerDismissed && (
@@ -1056,13 +1115,13 @@ export function AtelierDashboard({
             <span className="text-[12.5px] text-[var(--fg2)]">
               Pense à importer ou saisir tes données pour suivre ton patrimoine.
             </span>
-            <Link
-              href="/import"
+            <button
+              onClick={() => setPage("import")}
               className="rounded-full px-3 py-[5px] text-[12px] font-semibold text-white"
               style={{ background: "linear-gradient(140deg, var(--accent), var(--accent2))" }}
             >
               Importer
-            </Link>
+            </button>
           </div>
         </div>
       )}
