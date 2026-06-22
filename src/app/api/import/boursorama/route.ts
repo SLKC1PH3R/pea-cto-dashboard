@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { parseBoursoramaStatement } from "@/lib/parsers/boursorama-pdf";
 import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
 import { findTradingViewSymbolByIsin, findTradingViewSymbolByName, toDisplayTicker } from "@/lib/tradingview-quote";
-import { txHeuristicKey, txReferenceKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
+import { txHeuristicKey, txHeuristicKeyVariants, txReferenceKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
 import { PDFParse } from "pdf-parse";
 
 export type PreviewTransaction = {
@@ -113,6 +113,12 @@ export async function POST(req: NextRequest) {
   const existingDeposits = await prisma.deposit.findMany({ where: { accountId }, select: { date: true, amount: true } });
   const seenDepKeys = new Set(existingDeposits.map((d) => depositDuplicateKey(Number(d.amount), d.date)));
 
+  // Phase 1 : parser chaque fichier et résoudre les tickers, sans encore
+  // décider des doublons (qui se fait en phase 2, sur l'ensemble du batch —
+  // voir plus bas pour pourquoi l'ordre de traitement des fichiers ne doit
+  // pas influencer le résultat).
+  type ResolvedTx = PreviewTransaction;
+  const fileResolvedTx: ResolvedTx[][] = [];
   const results: PreviewFileResult[] = [];
 
   for (const file of files) {
@@ -123,6 +129,7 @@ export async function POST(req: NextRequest) {
       transactions: [],
       deposits: [],
     };
+    let resolvedTransactions: Omit<ResolvedTx, "duplicate">[] = [];
 
     try {
       const buffer = Buffer.from(await file.arrayBuffer());
@@ -145,7 +152,7 @@ export async function POST(req: NextRequest) {
         result.message = "Ce fichier semble déjà avoir été importé (même nom de fichier détecté en base).";
       }
 
-      const resolvedTransactions = await Promise.all(
+      resolvedTransactions = await Promise.all(
         parsed.transactions.map(async (tx) => {
           const base = {
             date: tx.date.toISOString(),
@@ -194,32 +201,6 @@ export async function POST(req: NextRequest) {
         })
       );
 
-      // Doublon = même référence d'ordre déjà vue (signal fiable, propre aux
-      // avis d'opéré) ; quand aucune référence n'est disponible (relevé
-      // espèces), on retombe sur jour/actif/sens/montant — utile uniquement
-      // pour détecter le même mouvement décrit dans un format différent. Une
-      // référence présente et inédite n'est PAS un doublon même si son
-      // empreinte heuristique coïncide avec une autre ligne (cas d'un même
-      // gros ordre exécuté en plusieurs fois au même cours le même jour).
-      result.transactions = resolvedTransactions.map((tx) => {
-        if (!tx.ticker) return { ...tx, duplicate: false };
-        const heuristicKey = txHeuristicKey(tx.ticker, tx.type, tx.amount, new Date(tx.date));
-
-        if (tx.reference) {
-          const refKey = txReferenceKey(tx.reference);
-          const duplicate = seenRefKeys.has(refKey);
-          if (!duplicate) {
-            seenRefKeys.add(refKey);
-            seenHeuristicKeys.add(heuristicKey);
-          }
-          return { ...tx, duplicate };
-        }
-
-        const duplicate = seenHeuristicKeys.has(heuristicKey);
-        seenHeuristicKeys.add(heuristicKey);
-        return { ...tx, duplicate };
-      });
-
       result.deposits = parsed.deposits.map((d) => {
         const key = depositDuplicateKey(d.amount, d.date);
         const duplicate = seenDepKeys.has(key);
@@ -227,27 +208,75 @@ export async function POST(req: NextRequest) {
         return { date: d.date.toISOString().slice(0, 10), label: d.label, amount: d.amount, duplicate };
       });
 
-      if (result.transactions.some((t) => t.duplicate) || result.deposits.some((d) => d.duplicate)) {
+      if (result.deposits.some((d) => d.duplicate)) {
         result.status = "warning";
-        result.message = [result.message, "Des lignes correspondant à un mouvement déjà importé (même jour/actif/montant) ont été détectées et décochées par défaut."]
+        result.message = [result.message, "Des dépôts déjà importés (même jour/montant) ont été détectés et décochés par défaut."]
           .filter(Boolean)
           .join(" ");
-      }
-
-      if (result.transactions.some((t) => !t.ticker) && result.status === "ok") {
-        result.status = "warning";
-        result.message = "Certains actifs n'ont pas pu être reconnus automatiquement — renseigne leur ticker avant de confirmer.";
-      } else if (result.transactions.some((t) => t.suggested) && result.status === "ok") {
-        result.status = "warning";
-        result.message = "Certains tickers ont été proposés automatiquement via une recherche tradingview.com — vérifie-les avant de confirmer.";
       }
     } catch (err) {
       result.status = "error";
       result.message = err instanceof Error ? err.message : "Erreur inconnue lors du parsing";
     }
 
+    fileResolvedTx.push(resolvedTransactions.map((tx) => ({ ...tx, duplicate: false })));
     results.push(result);
   }
+
+  // Phase 2 : déduplication sur l'ensemble du batch, en deux passes — les
+  // lignes avec une référence d'ordre (avis d'opéré, signal fiable) d'abord,
+  // puis celles sans référence (relevé espèces, repli heuristique) ensuite.
+  // Sans cet ordre fixe, une ligne de relevé espèces traitée AVANT l'avis
+  // d'opéré correspondant enregistrerait sa propre empreinte heuristique sans
+  // que l'avis (qui ne vérifie que sa référence) ne la voie jamais — les deux
+  // finiraient importées en double. En traitant systématiquement les lignes
+  // référencées en premier, le relevé espèces (sans référence) les voit
+  // toujours et se fait correctement écarter comme doublon.
+  const allTx: { fileIdx: number; txIdx: number; tx: Omit<ResolvedTx, "duplicate"> }[] = [];
+  fileResolvedTx.forEach((txs, fileIdx) => txs.forEach((tx, txIdx) => allTx.push({ fileIdx, txIdx, tx })));
+
+  const withRef = allTx.filter((t) => t.tx.reference);
+  const withoutRef = allTx.filter((t) => !t.tx.reference);
+
+  for (const { fileIdx, txIdx, tx } of withRef) {
+    if (!tx.ticker) continue;
+    const refKey = txReferenceKey(tx.reference!);
+    const duplicate = seenRefKeys.has(refKey);
+    if (!duplicate) {
+      seenRefKeys.add(refKey);
+      seenHeuristicKeys.add(txHeuristicKey(tx.ticker, tx.type, tx.amount, new Date(tx.date)));
+    }
+    fileResolvedTx[fileIdx][txIdx].duplicate = duplicate;
+  }
+
+  for (const { fileIdx, txIdx, tx } of withoutRef) {
+    if (!tx.ticker) continue;
+    // Tolérance J-1/J/J+1 : le relevé espèces utilise la date de
+    // comptabilisation, qui peut différer d'un jour de la date d'exécution
+    // imprimée sur l'avis d'opéré pour le même ordre.
+    const variants = txHeuristicKeyVariants(tx.ticker, tx.type, tx.amount, new Date(tx.date));
+    const duplicate = variants.some((k) => seenHeuristicKeys.has(k));
+    seenHeuristicKeys.add(txHeuristicKey(tx.ticker, tx.type, tx.amount, new Date(tx.date)));
+    fileResolvedTx[fileIdx][txIdx].duplicate = duplicate;
+  }
+
+  results.forEach((result, fileIdx) => {
+    result.transactions = fileResolvedTx[fileIdx];
+
+    if (result.transactions.some((t) => t.duplicate)) {
+      result.status = "warning";
+      result.message = [result.message, "Des lignes correspondant à un mouvement déjà importé (même jour/actif/montant) ont été détectées et décochées par défaut."]
+        .filter(Boolean)
+        .join(" ");
+    }
+    if (result.transactions.some((t) => !t.ticker) && result.status === "ok") {
+      result.status = "warning";
+      result.message = "Certains actifs n'ont pas pu être reconnus automatiquement — renseigne leur ticker avant de confirmer.";
+    } else if (result.transactions.some((t) => t.suggested) && result.status === "ok") {
+      result.status = "warning";
+      result.message = "Certains tickers ont été proposés automatiquement via une recherche tradingview.com — vérifie-les avant de confirmer.";
+    }
+  });
 
   return NextResponse.json({ results });
 }

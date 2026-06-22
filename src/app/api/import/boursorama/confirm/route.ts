@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
-import { txHeuristicKey, txReferenceKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
+import { txHeuristicKey, txHeuristicKeyVariants, txReferenceKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
 
 type ConfirmTransaction = {
   filename: string;
@@ -73,17 +73,23 @@ export async function POST(req: NextRequest) {
   const existingDeposits = await prisma.deposit.findMany({ where: { accountId }, select: { date: true, amount: true } });
   const seenDepKeys = new Set(existingDeposits.map((d) => depositDuplicateKey(Number(d.amount), d.date)));
 
-  for (const tx of transactions ?? []) {
+  // Les lignes avec référence (avis d'opéré, signal fiable) sont traitées
+  // avant celles sans référence (relevé espèces, repli heuristique) — sinon
+  // un relevé espèces traité avant l'avis d'opéré correspondant enregistre sa
+  // propre empreinte sans que l'avis (qui ne vérifie que sa référence) ne la
+  // voie jamais, et les deux finissent importés en double. Voir
+  // duplicate-key.ts pour le détail (même logique que l'aperçu).
+  const orderedTransactions = [...(transactions ?? [])].sort(
+    (a, b) => (a.reference ? 0 : 1) - (b.reference ? 0 : 1)
+  );
+
+  for (const tx of orderedTransactions) {
     const ticker = tx.ticker?.trim().toUpperCase();
     if (!ticker) {
       errors.push(`${tx.assetName} : ticker manquant, ligne ignorée`);
       continue;
     }
 
-    // Une référence d'ordre présente fait foi (signal fiable) ; sinon repli
-    // sur jour/actif/sens/montant — voir duplicate-key.ts pour le détail du
-    // piège évité (gros ordre exécuté en plusieurs fois au même cours).
-    const heuristicKey = txHeuristicKey(ticker, tx.type, tx.amount, new Date(tx.date));
     if (tx.reference) {
       const refKey = txReferenceKey(tx.reference);
       if (seenRefKeys.has(refKey)) {
@@ -91,13 +97,17 @@ export async function POST(req: NextRequest) {
         continue;
       }
       seenRefKeys.add(refKey);
-      seenHeuristicKeys.add(heuristicKey);
+      seenHeuristicKeys.add(txHeuristicKey(ticker, tx.type, tx.amount, new Date(tx.date)));
     } else {
-      if (seenHeuristicKeys.has(heuristicKey)) {
+      // Tolérance J-1/J/J+1 : le relevé espèces utilise la date de
+      // comptabilisation, qui peut différer d'un jour de la date d'exécution
+      // imprimée sur l'avis d'opéré pour le même ordre.
+      const variants = txHeuristicKeyVariants(ticker, tx.type, tx.amount, new Date(tx.date));
+      if (variants.some((k) => seenHeuristicKeys.has(k))) {
         errors.push(`${tx.assetName} : doublon détecté (même jour/sens/montant déjà en base), ligne ignorée`);
         continue;
       }
-      seenHeuristicKeys.add(heuristicKey);
+      seenHeuristicKeys.add(txHeuristicKey(ticker, tx.type, tx.amount, new Date(tx.date)));
     }
 
     try {

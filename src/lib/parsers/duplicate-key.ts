@@ -23,6 +23,19 @@ export function txHeuristicKey(ticker: string, type: "BUY" | "SELL", amount: num
   return `${ticker.toUpperCase()}|${type}|${dayKey(date)}|${amount.toFixed(2)}`;
 }
 
+/**
+ * Variantes de la clé heuristique sur J-1/J/J+1 — le relevé espèces utilise
+ * la date de comptabilisation (de règlement), qui peut tomber un jour après
+ * la date d'exécution réelle imprimée sur l'avis d'opéré pour le même ordre
+ * (ex: exécution le 08/05 au soir, comptabilisée le 09/05). À utiliser
+ * uniquement en lecture (recherche de doublon), jamais pour enregistrer une
+ * clé, sous peine de masquer de vrais ordres distincts à un jour d'écart.
+ */
+export function txHeuristicKeyVariants(ticker: string, type: "BUY" | "SELL", amount: number, date: Date): string[] {
+  const oneDay = 24 * 60 * 60 * 1000;
+  return [-1, 0, 1].map((offset) => txHeuristicKey(ticker, type, amount, new Date(date.getTime() + offset * oneDay)));
+}
+
 export function txReferenceKey(reference: string): string {
   return `ref:${reference}`;
 }
