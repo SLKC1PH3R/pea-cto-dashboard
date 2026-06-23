@@ -11,6 +11,7 @@
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -277,12 +278,7 @@ export function AtelierDashboard({
         <header className="mb-[22px] flex items-center justify-between gap-6">
           <div className="flex items-center gap-7">
             <div className="flex items-center gap-[11px]">
-              <div
-                className="flex h-9 w-9 items-center justify-center rounded-xl"
-                style={{ background: "linear-gradient(140deg, var(--accent), var(--accent2))", boxShadow: "0 6px 18px -6px var(--accent)" }}
-              >
-                <div className="h-[13px] w-[13px] rounded-[4px] bg-white" />
-              </div>
+              <Image src="/folio-logo.svg" alt="Folio" width={36} height={36} className="rounded-xl" />
               <span className="text-[19px] font-extrabold tracking-tight text-[var(--fg)]">Folio</span>
             </div>
             <nav className="flex gap-1 rounded-2xl border border-[var(--line)] bg-[var(--panel2)] p-[5px]">

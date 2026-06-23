@@ -16,10 +16,10 @@
  *    laissé passer tel quel, sans interception.
  */
 
-const VERSION = "folio-v1";
+const VERSION = "folio-v2";
 const STATIC_CACHE = `${VERSION}-static`;
 const API_CACHE = `${VERSION}-api`;
-const PRECACHE_URLS = ["/offline.html", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
+const PRECACHE_URLS = ["/offline.html", "/manifest.webmanifest", "/folio-logo.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

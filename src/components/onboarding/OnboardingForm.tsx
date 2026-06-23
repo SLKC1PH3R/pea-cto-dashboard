@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import Image from "next/image";
 import { AssetSearch } from "@/components/markets/AssetSearch";
 import { PALETTE } from "@/components/dashboard/atelier-data";
 
@@ -83,12 +84,7 @@ export function OnboardingForm() {
         style={{ borderColor: "rgba(255,255,255,.07)", background: "#1a1628", boxShadow: "0 2px 8px rgba(0,0,0,.3), 0 20px 50px -28px rgba(120,80,240,.45)" }}
       >
         <div className="mb-6 flex items-center gap-[11px]">
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-xl"
-            style={{ background: "linear-gradient(140deg, #9d7bf5, #c9b6fb)", boxShadow: "0 6px 18px -6px #9d7bf5" }}
-          >
-            <div className="h-[13px] w-[13px] rounded-[4px] bg-white" />
-          </div>
+          <Image src="/folio-logo.svg" alt="Folio" width={36} height={36} className="rounded-xl" />
           <div>
             <h1 className="text-[19px] font-extrabold tracking-tight text-[#f0edf8]">Bienvenue sur Folio</h1>
             <p className="text-[12.5px] text-[#a79fbd]">Quelques infos pour configurer ton dashboard</p>
