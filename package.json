@@ -9,7 +9,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "prisma migrate deploy && next start",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "generate-icons": "tsx scripts/generate-icons.ts",
+    "lighthouse": "node scripts/run-lighthouse.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
@@ -36,6 +38,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-grid-layout": "^1.3.6",
+    "chrome-launcher": "^1.2.1",
+    "lighthouse": "^13.4.0",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
     "typescript": "^5"
