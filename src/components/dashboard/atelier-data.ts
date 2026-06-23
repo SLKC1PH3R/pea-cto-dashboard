@@ -99,6 +99,12 @@ export interface DashboardData {
   cash: number;
   goal: number | null;
   evo: number[]; // capital versé cumulé, par mois (plus ancien → plus récent)
+  // Valeur totale réelle du portefeuille (titres + cash) reconstruite mois
+  // par mois à partir de l'historique des transactions et des cours de
+  // clôture mensuels Yahoo Finance — mêmes mois que `evo`, alignés index à
+  // index. Replie sur le PRU à la date pour les mois/actifs non couverts par
+  // Yahoo (pas de variation fabriquée).
+  evoTotal: number[];
   alloc: AllocSlice[];
   positions: Position[];
   gainers: Mover[];
@@ -152,56 +158,78 @@ const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep
 
 export interface EvolutionPoint {
   xPct: number;
-  yPct: number;
-  value: number; // capital versé cumulé réel à ce point, en €
-  pctFromStart: number; // progression vs le premier point de la série affichée
+  yPctVerse: number;
+  yPctTotal: number;
+  valueVerse: number; // capital versé cumulé réel à ce point, en €
+  valueTotal: number; // valeur totale réelle (titres + cash) reconstruite à ce point, en €
+  pctFromStart: number; // performance du capital total vs le premier point de la série affichée
   dateLabel: string; // ex: "avril 2026"
 }
 
 export interface EvolutionChart {
-  line: string;
-  area: string;
-  lastTopPct: number;
+  lineVerse: string;
+  lineTotal: string;
+  area: string; // sous la courbe du capital total
+  lastTopPctVerse: number;
+  lastTopPctTotal: number;
   labels: { leftPct: number; text: string }[];
   endValue: number;
   points: EvolutionPoint[];
 }
 
-export function buildEvolution(evo: number[], period: Period, now: Date = new Date()): EvolutionChart {
-  const n = Math.min(PERIOD_POINTS[period], evo.length);
-  const series = evo.slice(evo.length - n);
+export function buildEvolution(evoVerse: number[], evoTotal: number[], period: Period, now: Date = new Date()): EvolutionChart {
+  const n = Math.min(PERIOD_POINTS[period], evoVerse.length);
+  const verseSeries = evoVerse.slice(evoVerse.length - n);
+  const totalSeries = evoTotal.slice(evoTotal.length - n);
   const W = 1000;
   const H = 300;
   const padY = 20;
-  const mn = Math.min(...series);
-  const mx = Math.max(...series);
+  const mn = Math.min(...verseSeries, ...totalSeries);
+  const mx = Math.max(...verseSeries, ...totalSeries);
   const rg = mx - mn || 1;
-  const L = series.length;
-  const pts: Pt[] = series.map((v, i) => [
-    (L === 1 ? 0 : i / (L - 1)) * W,
-    padY + (H - padY * 2) * (1 - (v - mn) / rg),
-  ]);
-  const line = smooth(pts);
-  const area = `${line} L ${W} ${H} L 0 ${H} Z`;
-  const last = pts[pts.length - 1];
+  const L = verseSeries.length;
+  const toPts = (series: number[]): Pt[] =>
+    series.map((v, i) => [
+      (L === 1 ? 0 : i / (L - 1)) * W,
+      padY + (H - padY * 2) * (1 - (v - mn) / rg),
+    ]);
+  const ptsVerse = toPts(verseSeries);
+  const ptsTotal = toPts(totalSeries);
+  const lineVerse = smooth(ptsVerse);
+  const lineTotal = smooth(ptsTotal);
+  const area = `${lineTotal} L ${W} ${H} L 0 ${H} Z`;
+  const lastVerse = ptsVerse[ptsVerse.length - 1];
+  const lastTotal = ptsTotal[ptsTotal.length - 1];
   const labCount = Math.min(6, L);
   const labels = Array.from({ length: labCount }, (_, k) => {
     const i = Math.round((k * (L - 1)) / (labCount - 1));
     const mi = (((5 - (L - 1 - i)) % 12) + 12) % 12;
     return { leftPct: +((i / (L - 1)) * 100).toFixed(1), text: MONTHS[mi] };
   });
-  const start = series[0] || 0;
-  const points: EvolutionPoint[] = series.map((v, i) => {
+  const startTotal = totalSeries[0] || 0;
+  const points: EvolutionPoint[] = verseSeries.map((v, i) => {
+    const t = totalSeries[i];
     const pointDate = new Date(now.getFullYear(), now.getMonth() - (L - 1 - i), 1);
     return {
       xPct: +((L === 1 ? 0 : (i / (L - 1)) * 100)).toFixed(2),
-      yPct: +((pts[i][1] / H) * 100).toFixed(2),
-      value: v,
-      pctFromStart: start > 0 ? +(((v - start) / start) * 100).toFixed(2) : 0,
+      yPctVerse: +((ptsVerse[i][1] / H) * 100).toFixed(2),
+      yPctTotal: +((ptsTotal[i][1] / H) * 100).toFixed(2),
+      valueVerse: v,
+      valueTotal: t,
+      pctFromStart: startTotal > 0 ? +(((t - startTotal) / startTotal) * 100).toFixed(2) : 0,
       dateLabel: pointDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }),
     };
   });
-  return { line, area, lastTopPct: +((last[1] / H) * 100).toFixed(2), labels, endValue: series[series.length - 1] * 1000, points };
+  return {
+    lineVerse,
+    lineTotal,
+    area,
+    lastTopPctVerse: +((lastVerse[1] / H) * 100).toFixed(2),
+    lastTopPctTotal: +((lastTotal[1] / H) * 100).toFixed(2),
+    labels,
+    endValue: totalSeries[totalSeries.length - 1] ?? 0,
+    points,
+  };
 }
 
 // ── Géométrie : donut allocation ───────────────────────────────

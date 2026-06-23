@@ -40,3 +40,43 @@ export async function getYahooQuotes(tickers: string[]): Promise<Record<string, 
   }
   return out;
 }
+
+/**
+ * Historique des cours de clôture mensuels, pour reconstruire une courbe de
+ * valorisation passée du portefeuille (sans fabriquer de variation : si
+ * Yahoo ne couvre pas l'actif, on renvoie `null` et l'appelant doit replier
+ * sur le PRU à la date concernée). Clé = "YYYY-MM", valeur = dernier cours
+ * de clôture connu de ce mois.
+ */
+export async function getYahooMonthlyHistory(ticker: string): Promise<Record<string, number> | null> {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1mo&range=max`;
+    const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, cache: "no-store" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const result = data?.chart?.result?.[0];
+    const timestamps: number[] | undefined = result?.timestamp;
+    const closes: (number | null)[] | undefined = result?.indicators?.quote?.[0]?.close;
+    if (!timestamps || !closes) return null;
+    const out: Record<string, number> = {};
+    for (let i = 0; i < timestamps.length; i++) {
+      const close = closes[i];
+      if (typeof close !== "number") continue;
+      const d = new Date(timestamps[i] * 1000);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      out[key] = close;
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+export async function getYahooMonthlyHistories(tickers: string[]): Promise<Record<string, Record<string, number>>> {
+  const results = await Promise.all(tickers.map(async (t) => [t, await getYahooMonthlyHistory(t)] as const));
+  const out: Record<string, Record<string, number>> = {};
+  for (const [t, h] of results) {
+    if (h) out[t] = h;
+  }
+  return out;
+}

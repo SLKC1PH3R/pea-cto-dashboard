@@ -1,8 +1,9 @@
+import type { Decimal } from "@prisma/client/runtime/client";
 import { prisma } from "@/lib/prisma";
 import { getQuotes } from "@/lib/finnhub";
 import { getBoursoramaQuoteByIsin, type BoursoramaQuote } from "@/lib/boursorama-quote";
 import { getTradingViewQuoteByIsin, type TradingViewQuote } from "@/lib/tradingview-quote";
-import { getYahooQuotes, type YahooQuote } from "@/lib/yahoo-quote";
+import { getYahooQuotes, getYahooMonthlyHistories, type YahooQuote } from "@/lib/yahoo-quote";
 import { findIsinByTicker } from "@/lib/parsers/asset-mapping";
 import { syncAllActiveDcaRules } from "@/lib/dca-sync";
 import { currentQuantity, averageCostPrice, totalAcquisitionCost, realizedPnl } from "@/lib/finance-calculations";
@@ -54,18 +55,89 @@ function resolvePrice(
   return { price: pru, day: 0, source: "pru" };
 }
 
-function buildMonthlyCumulativeDeposits(deposits: { amount: { toNumber(): number }; date: Date }[]): number[] {
-  if (deposits.length === 0) return [0, 0];
-  const sorted = [...deposits].sort((a, b) => a.date.getTime() - b.date.getTime());
-  const monthly = new Map<string, number>();
-  let running = 0;
-  for (const d of sorted) {
-    running += d.amount.toNumber();
-    const key = `${d.date.getFullYear()}-${String(d.date.getMonth() + 1).padStart(2, "0")}`;
-    monthly.set(key, running);
+function ymKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Toutes les clés "YYYY-MM" entre deux dates, mois calendaires complets (bornes incluses). */
+function monthKeysBetween(start: Date, end: Date): string[] {
+  const keys: string[] = [];
+  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  const last = new Date(end.getFullYear(), end.getMonth(), 1);
+  while (cur <= last) {
+    keys.push(ymKey(cur));
+    cur.setMonth(cur.getMonth() + 1);
   }
-  const values = Array.from(monthly.values());
-  return values.length >= 2 ? values : [0, ...values];
+  return keys;
+}
+
+/** Capital versé cumulé, un point par mois calendaire de `monthKeys` (reporté si pas de dépôt ce mois-là). */
+function buildMonthlyCumulativeDeposits(
+  deposits: { amount: { toNumber(): number }; date: Date }[],
+  monthKeys: string[]
+): number[] {
+  const byMonth = new Map<string, number>();
+  for (const d of deposits) {
+    const key = ymKey(d.date);
+    byMonth.set(key, (byMonth.get(key) ?? 0) + d.amount.toNumber());
+  }
+  let running = 0;
+  return monthKeys.map((key) => {
+    running += byMonth.get(key) ?? 0;
+    return running;
+  });
+}
+
+/** Replie sur le cours mensuel connu le plus proche dans le passé (jamais vers l'avenir) — pas de variation fabriquée. */
+function nearestHistoricalPrice(history: Record<string, number>, key: string): number | undefined {
+  if (history[key] !== undefined) return history[key];
+  let [y, m] = key.split("-").map(Number);
+  for (let i = 0; i < 12; i++) {
+    m -= 1;
+    if (m === 0) {
+      m = 12;
+      y -= 1;
+    }
+    const k = `${y}-${String(m).padStart(2, "0")}`;
+    if (history[k] !== undefined) return history[k];
+  }
+  return undefined;
+}
+
+/**
+ * Reconstruit la valeur totale réelle du portefeuille (titres + cash) mois
+ * par mois, à partir de la quantité réellement détenue à chaque date (connue
+ * avec certitude via l'historique des transactions) et des cours de clôture
+ * mensuels Yahoo Finance. Si Yahoo ne couvre pas le mois/l'actif, on replie
+ * sur le PRU à cette date plutôt que d'inventer un cours.
+ */
+async function buildMonthlyTotalValueSeries(
+  monthKeys: string[],
+  positions: { asset: { ticker: string }; transactions: { type: "BUY" | "SELL"; quantity: Decimal; price: Decimal; fees: Decimal; date: Date }[] }[],
+  depositsCumulative: number[]
+): Promise<number[]> {
+  const tickers = [...new Set(positions.map((p) => p.asset.ticker))];
+  const histories = tickers.length > 0 ? await getYahooMonthlyHistories(tickers) : {};
+
+  return monthKeys.map((key, i) => {
+    const [y, m] = key.split("-").map(Number);
+    const cutoff = new Date(y, m, 0, 23, 59, 59, 999); // dernier instant du mois `key`
+    let marketValue = 0;
+    let costBasis = 0;
+    for (const position of positions) {
+      const txsUpToDate = position.transactions.filter((t) => t.date <= cutoff);
+      if (txsUpToDate.length === 0) continue;
+      const qty = currentQuantity(txsUpToDate);
+      costBasis += totalAcquisitionCost(txsUpToDate);
+      if (qty <= 0) continue;
+      const history = histories[position.asset.ticker];
+      const histPrice = history ? nearestHistoricalPrice(history, key) : undefined;
+      const price = histPrice ?? averageCostPrice(txsUpToDate);
+      marketValue += qty * price;
+    }
+    const cash = Math.max(depositsCumulative[i] - costBasis, 0);
+    return marketValue + cash;
+  });
 }
 
 export async function getDashboardData(userId: string, userEmail: string | null | undefined): Promise<DashboardData> {
@@ -243,6 +315,20 @@ export async function getDashboardData(userId: string, userEmail: string | null 
   const totalDeposited = deposits.reduce((sum, d) => sum + d.amount.toNumber(), 0);
   const cash = Math.max(totalDeposited - totalCost, 0);
 
+  // ── Évolution mensuelle : capital versé cumulé vs valeur totale réelle
+  // reconstruite (titres au cours historique + cash), pour montrer l'effet
+  // des plus/moins-values dans le temps et pas seulement les versements.
+  const now = new Date();
+  const monthKeys =
+    deposits.length === 0
+      ? [ymKey(new Date(now.getFullYear(), now.getMonth() - 1, 1)), ymKey(now)]
+      : monthKeysBetween(
+          deposits.reduce((min, d) => (d.date < min ? d.date : min), deposits[0].date),
+          now
+        );
+  const evo = buildMonthlyCumulativeDeposits(deposits, monthKeys);
+  const evoTotal = await buildMonthlyTotalValueSeries(monthKeys, allPositions, evo);
+
   // ── Frais réels
   const fees = accounts.flatMap((a) => a.fees);
   const oneYearAgo = new Date();
@@ -392,7 +478,8 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     },
     cash,
     goal: user?.goalAmount ? user.goalAmount.toNumber() : null,
-    evo: buildMonthlyCumulativeDeposits(deposits),
+    evo,
+    evoTotal,
     alloc,
     positions: atelierPositions,
     gainers,

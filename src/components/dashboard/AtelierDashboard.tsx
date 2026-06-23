@@ -185,7 +185,7 @@ export function AtelierDashboard({
     return { rows: sorted, sum, maxW };
   }, [data.positions, sortKey, sortDir]);
 
-  const chart = useMemo(() => buildEvolution(data.evo, period), [data.evo, period]);
+  const chart = useMemo(() => buildEvolution(data.evo, data.evoTotal, period), [data.evo, data.evoTotal, period]);
   const donut = useMemo(() => buildDonut(data.alloc), [data.alloc]);
   const sectorDonut = useMemo(() => buildDonut(data.sectors), [data.sectors]);
   const goalPct = data.goal ? (data.total / data.goal) * 100 : 0;
@@ -390,7 +390,7 @@ export function AtelierDashboard({
             <section className="col-span-8 rounded-[22px] border border-[var(--line)] bg-[var(--panel)] px-[26px] py-6" style={{ boxShadow: "var(--shadow)" }}>
               <div className="mb-[14px] flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-[17px] font-bold text-[var(--fg)]">Capital versé</h2>
+                  <h2 className="text-[17px] font-bold text-[var(--fg)]">Capital versé vs capital total</h2>
                   <span className="text-[12.5px] text-[var(--fg2)]">
                     Performance totale ·{" "}
                     <span className={pl >= 0 ? "font-semibold text-[var(--pos)]" : "font-semibold text-[var(--neg)]"}>
@@ -411,7 +411,25 @@ export function AtelierDashboard({
                   ))}
                 </div>
               </div>
-              <EvolutionSvg id="atelierEvo" area={chart.area} line={chart.line} lastTopPct={chart.lastTopPct} points={chart.points} />
+              <div className="mb-3 flex items-center gap-4 text-[11.5px] text-[var(--fg2)]">
+                <span className="flex items-center gap-[6px]">
+                  <span className="h-[8px] w-[8px] rounded-full" style={{ background: "var(--accent)" }} />
+                  Capital total (titres + cash)
+                </span>
+                <span className="flex items-center gap-[6px]">
+                  <span className="h-[2px] w-[14px]" style={{ background: "var(--fg3)" }} />
+                  Capital versé
+                </span>
+              </div>
+              <EvolutionSvg
+                id="atelierEvo"
+                area={chart.area}
+                lineTotal={chart.lineTotal}
+                lineVerse={chart.lineVerse}
+                lastTopPctTotal={chart.lastTopPctTotal}
+                lastTopPctVerse={chart.lastTopPctVerse}
+                points={chart.points}
+              />
               <ChartLabels labels={chart.labels} />
             </section>
 
@@ -1175,14 +1193,18 @@ export function AtelierDashboard({
 function EvolutionSvg({
   id,
   area,
-  line,
-  lastTopPct,
+  lineTotal,
+  lineVerse,
+  lastTopPctTotal,
+  lastTopPctVerse,
   points,
 }: {
   id: string;
   area: string;
-  line: string;
-  lastTopPct: number;
+  lineTotal: string;
+  lineVerse: string;
+  lastTopPctTotal: number;
+  lastTopPctVerse: number;
   points: import("./atelier-data").EvolutionPoint[];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1199,6 +1221,7 @@ function EvolutionSvg({
 
   const hovered = hoverIdx !== null ? points[hoverIdx] : null;
   const tooltipLeft = hovered ? Math.min(Math.max(hovered.xPct, 8), 92) : 0;
+  const tooltipTop = hovered ? Math.min(hovered.yPctTotal, hovered.yPctVerse) : 0;
 
   return (
     <div
@@ -1215,7 +1238,8 @@ function EvolutionSvg({
           </linearGradient>
         </defs>
         <path d={area} fill={`url(#${id})`} />
-        <path d={line} fill="none" style={{ stroke: "var(--accent)" }} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <path d={lineVerse} fill="none" style={{ stroke: "var(--fg3)" }} strokeWidth={2} strokeDasharray="6 5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <path d={lineTotal} fill="none" style={{ stroke: "var(--accent)" }} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         {hovered && (
           <line
             x1={hovered.xPct * 10}
@@ -1229,26 +1253,40 @@ function EvolutionSvg({
           />
         )}
       </svg>
-      <div className="absolute -right-[5px] h-[13px] w-[13px] -translate-y-1/2 rounded-full border-[3px] border-[var(--panel)] bg-[var(--accent)]" style={{ top: `${lastTopPct}%` }} />
+      <div className="absolute -right-[5px] h-[13px] w-[13px] -translate-y-1/2 rounded-full border-[3px] border-[var(--panel)] bg-[var(--accent)]" style={{ top: `${lastTopPctTotal}%` }} />
+      <div className="absolute -right-[4px] h-[10px] w-[10px] -translate-y-1/2 rounded-full border-[2px] border-[var(--panel)] bg-[var(--fg3)]" style={{ top: `${lastTopPctVerse}%` }} />
       {hovered && (
         <>
           <div
             className="absolute h-[11px] w-[11px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[2px] border-[var(--panel)] bg-[var(--accent)]"
-            style={{ left: `${hovered.xPct}%`, top: `${hovered.yPct}%` }}
+            style={{ left: `${hovered.xPct}%`, top: `${hovered.yPctTotal}%` }}
+          />
+          <div
+            className="absolute h-[9px] w-[9px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[2px] border-[var(--panel)] bg-[var(--fg3)]"
+            style={{ left: `${hovered.xPct}%`, top: `${hovered.yPctVerse}%` }}
           />
           <div
             className="pointer-events-none absolute -translate-x-1/2 -translate-y-full rounded-[10px] border px-3 py-2 text-[12px] shadow-lg"
             style={{
               left: `${tooltipLeft}%`,
-              top: `${Math.max(hovered.yPct - 4, 0)}%`,
+              top: `${Math.max(tooltipTop - 4, 0)}%`,
               borderColor: "var(--line)",
               background: "var(--panel)",
               color: "var(--fg)",
             }}
           >
             <div className="font-semibold capitalize">{hovered.dateLabel}</div>
-            <div style={num} className="mt-[2px] font-bold">{eur(hovered.value)}</div>
-            <div className={hovered.pctFromStart >= 0 ? "text-[var(--pos)]" : "text-[var(--neg)]"}>
+            <div className="mt-[4px] flex flex-col gap-[2px]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[var(--fg2)]">Capital total</span>
+                <span style={num} className="font-bold">{eur(hovered.valueTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[var(--fg2)]">Capital versé</span>
+                <span style={num} className="font-semibold text-[var(--fg2)]">{eur(hovered.valueVerse)}</span>
+              </div>
+            </div>
+            <div className={hovered.pctFromStart >= 0 ? "mt-[2px] text-[var(--pos)]" : "mt-[2px] text-[var(--neg)]"}>
               {signPct(hovered.pctFromStart)} depuis le début de la période
             </div>
           </div>
