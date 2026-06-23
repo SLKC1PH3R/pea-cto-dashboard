@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const COLORS = ["#9d7bf5", "#5fc7a0", "#e08a8a", "#c9a978", "#6ea8c9", "#e0a85f", "#c9b6fb"];
 const MAX_DIM = 128;
-
-type TokenInfo = { id: string; label: string; createdAt: string; lastUsedAt: string | null };
 
 type ProfileSettingsProps = {
   name: string;
@@ -24,45 +22,6 @@ export function ProfileSettings({ name, email, avatarColor, avatarUrl }: Profile
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
-  const [newToken, setNewToken] = useState<string | null>(null);
-  const [tokenBusy, setTokenBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    fetch("/api/profile/extension-token")
-      .then((r) => r.json())
-      .then((d) => setTokenInfo(d.token ?? null))
-      .catch(() => {});
-  }, [open]);
-
-  async function generateToken() {
-    setTokenBusy(true);
-    setNewToken(null);
-    const res = await fetch("/api/profile/extension-token", { method: "POST" });
-    setTokenBusy(false);
-    if (!res.ok) return;
-    const data = await res.json();
-    setNewToken(data.token);
-    setTokenInfo({ id: "new", label: "Extension navigateur", createdAt: new Date().toISOString(), lastUsedAt: null });
-  }
-
-  async function revokeToken() {
-    setTokenBusy(true);
-    await fetch("/api/profile/extension-token", { method: "DELETE" });
-    setTokenBusy(false);
-    setTokenInfo(null);
-    setNewToken(null);
-  }
-
-  function copyToken() {
-    if (!newToken) return;
-    navigator.clipboard.writeText(newToken);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
 
   function handleFile(file: File) {
     const img = new Image();
@@ -181,53 +140,6 @@ export function ProfileSettings({ name, email, avatarColor, avatarUrl }: Profile
             className="mb-3 w-full rounded-[10px] border px-3 py-2 text-[13px] outline-none"
             style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}
           />
-
-          <div className="mb-4 border-t pt-3" style={{ borderColor: "var(--line)" }}>
-            <p className="mb-2 text-[11.5px] font-semibold text-[var(--fg2)]">Extension navigateur</p>
-            {newToken ? (
-              <div className="flex flex-col gap-2">
-                <p className="text-[11px] text-[var(--fg3)]">
-                  Copie ce token maintenant — il ne sera plus jamais affiché. Colle-le dans les réglages de l'extension Folio.
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded-[8px] border px-2 py-1 text-[11px]" style={{ borderColor: "var(--line)", background: "var(--panel2)", color: "var(--fg)" }}>
-                    {newToken}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={copyToken}
-                    className="rounded-[8px] border px-2 py-1 text-[11px] font-medium text-[var(--fg2)]"
-                    style={{ borderColor: "var(--line)" }}
-                  >
-                    {copied ? "Copié ✓" : "Copier"}
-                  </button>
-                </div>
-              </div>
-            ) : tokenInfo ? (
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] text-[var(--fg3)]">Token actif depuis le {new Date(tokenInfo.createdAt).toLocaleDateString("fr-FR")}</span>
-                <button
-                  type="button"
-                  disabled={tokenBusy}
-                  onClick={revokeToken}
-                  className="rounded-[8px] border px-2 py-1 text-[11px] font-medium text-[var(--fg2)] hover:border-[var(--neg)] hover:text-[var(--neg)] disabled:opacity-50"
-                  style={{ borderColor: "var(--line)" }}
-                >
-                  Révoquer
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                disabled={tokenBusy}
-                onClick={generateToken}
-                className="rounded-[8px] border px-2 py-1 text-[11px] font-medium text-[var(--fg2)] disabled:opacity-50"
-                style={{ borderColor: "var(--line)" }}
-              >
-                {tokenBusy ? "Génération…" : "Générer un token"}
-              </button>
-            )}
-          </div>
 
           {error && <p className="mb-2 text-[11.5px]" style={{ color: "var(--neg)" }}>{error}</p>}
 

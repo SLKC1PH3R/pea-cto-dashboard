@@ -55,7 +55,6 @@ export const config = {
     "/api/watchlist",
     "/api/goal",
     "/api/profile",
-    "/api/profile/:path*",
     "/api/quotes",
   ],
 };
