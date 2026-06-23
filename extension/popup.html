@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="header">
+      <img src="icons/icon-32.png" alt="" width="20" height="20" />
+      <span>Folio</span>
+    </header>
+
+    <div id="content" class="content">
+      <p class="muted">Chargement…</p>
+    </div>
+
+    <template id="tpl-data">
+      <section class="block">
+        <p class="label">Portefeuille</p>
+        <p class="value" data-field="portfolioValue"></p>
+        <p class="change" data-field="dailyChangeLine"></p>
+      </section>
+      <section class="block" data-field="gainerBlock">
+        <p class="label">Top gain</p>
+        <p class="row" data-field="topGainer"></p>
+      </section>
+      <section class="block" data-field="loserBlock">
+        <p class="label">Top perte</p>
+        <p class="row" data-field="topLoser"></p>
+      </section>
+      <a class="cta" href="https://folio.digitalstack.cloud/dashboard" target="_blank" rel="noreferrer">Ouvrir Folio</a>
+      <p class="updated" data-field="updatedAt"></p>
+    </template>
+
+    <template id="tpl-no-token">
+      <p class="muted">Aucun token configuré.</p>
+      <button class="cta" id="configure-btn" type="button">Configurer l'extension</button>
+    </template>
+
+    <template id="tpl-invalid-token">
+      <p class="muted">Token invalide ou révoqué — génère-en un nouveau depuis Folio.</p>
+      <button class="cta" id="configure-btn" type="button">Configurer l'extension</button>
+    </template>
+
+    <template id="tpl-network-error">
+      <p class="muted">Impossible de contacter Folio. Réessaie plus tard.</p>
+    </template>
+
+    <script src="shared.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

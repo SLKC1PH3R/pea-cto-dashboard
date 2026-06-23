@@ -72,7 +72,9 @@ function wrapAsIco(png: Buffer, size: number): Buffer {
 async function main() {
   const root = join(__dirname, "..", "public");
   const iconsDir = join(root, "icons");
+  const extensionIconsDir = join(__dirname, "..", "extension", "icons");
   await mkdir(iconsDir, { recursive: true });
+  await mkdir(extensionIconsDir, { recursive: true });
 
   const logoDataUri = await loadLogoDataUri();
 
@@ -90,7 +92,13 @@ async function main() {
   // app/favicon.ico (convention Next.js — prioritaire sur public/favicon.ico)
   await writeFile(join(__dirname, "..", "src", "app", "favicon.ico"), wrapAsIco(faviconPng, 48));
 
-  console.log("Icônes PWA générées depuis folio-logo.svg dans /public (icons/, apple-touch-icon.png, favicon.ico).");
+  // Icônes de l'extension navigateur (manifest MV3 attend 16/32/48/128)
+  for (const size of [16, 32, 48, 128]) {
+    const png = await renderPng(logoDataUri, size);
+    await writeFile(join(extensionIconsDir, `icon-${size}.png`), png);
+  }
+
+  console.log("Icônes PWA + extension générées depuis folio-logo.svg.");
 }
 
 main().catch((err) => {

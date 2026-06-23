@@ -32,6 +32,28 @@ model User {
   dashboardLayouts DashboardLayout[]
   dcaRules        DcaRule[]
   watchlistItems  WatchlistItem[]
+  apiTokens       ApiToken[]
+}
+
+// ============================================================
+// TOKENS D'ACCÈS PERSONNELS (ex: extension navigateur)
+// ============================================================
+
+// L'extension navigateur n'a pas accès au cookie de session Next-Auth (autre
+// contexte d'origine) — elle s'authentifie donc avec un token dédié, envoyé
+// en "Authorization: Bearer ..." sur /api/extension. Seul le hash est stocké
+// (même logique que passwordHash) : le token brut n'est affiché qu'une fois,
+// à sa création, côté UI.
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  label      String    @default("Extension navigateur")
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
 }
 
 // ============================================================

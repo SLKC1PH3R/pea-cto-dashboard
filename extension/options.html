@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Réglages Folio</title>
+    <style>
+      body {
+        max-width: 420px;
+        margin: 40px auto;
+        background: #0e0c16;
+        color: #f0edf8;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        padding: 0 20px;
+      }
+      h1 {
+        font-size: 18px;
+      }
+      p {
+        font-size: 13px;
+        color: #a79fbd;
+        line-height: 1.5;
+      }
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: #1a1628;
+        color: #f0edf8;
+        font-size: 13px;
+        margin-bottom: 10px;
+        box-sizing: border-box;
+      }
+      button {
+        padding: 9px 16px;
+        border-radius: 10px;
+        border: none;
+        background: linear-gradient(140deg, #9d7bf5, #c9b6fb);
+        color: #fff;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #status {
+        margin-top: 10px;
+        font-size: 12.5px;
+        color: #5fc7a0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Réglages Folio</h1>
+    <p>
+      Génère un token depuis Folio (Profil → Extension navigateur), puis colle-le ci-dessous. Il est stocké uniquement
+      dans cette extension, jamais synchronisé avec ton compte Google/navigateur.
+    </p>
+    <input id="token" type="password" placeholder="folio_ext_..." />
+    <button id="save">Enregistrer</button>
+    <p id="status"></p>
+
+    <script src="shared.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

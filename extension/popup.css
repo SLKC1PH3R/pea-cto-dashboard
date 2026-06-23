@@ -1,0 +1,103 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 280px;
+  margin: 0;
+  background: #0e0c16;
+  color: #f0edf8;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.content {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.block {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding-bottom: 10px;
+}
+
+.block:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.label {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: #a79fbd;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.value {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.change {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.change.pos {
+  color: #5fc7a0;
+}
+
+.change.neg {
+  color: #e08a8a;
+}
+
+.row {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.muted {
+  margin: 0;
+  font-size: 12.5px;
+  color: #a79fbd;
+}
+
+.cta {
+  display: block;
+  text-align: center;
+  margin-top: 4px;
+  padding: 9px;
+  border-radius: 10px;
+  background: linear-gradient(140deg, #9d7bf5, #c9b6fb);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+}
+
+.updated {
+  margin: 0;
+  text-align: center;
+  font-size: 10.5px;
+  color: #6e6685;
+}
