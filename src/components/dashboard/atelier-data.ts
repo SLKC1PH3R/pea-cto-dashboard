@@ -162,7 +162,7 @@ export interface EvolutionPoint {
   yPctTotal: number;
   valueVerse: number; // capital versé cumulé réel à ce point, en €
   valueTotal: number; // valeur totale réelle (titres + cash) reconstruite à ce point, en €
-  pctFromStart: number; // performance du capital total vs le premier point de la série affichée
+  pctVsDeposits: number; // (capital total - capital versé) / capital versé à ce point — plus-value vs dépôts, pas une performance glissante depuis un point de départ arbitraire
   dateLabel: string; // ex: "avril 2026"
 }
 
@@ -206,7 +206,6 @@ export function buildEvolution(evoVerse: number[], evoTotal: number[], period: P
     const mi = (((5 - (L - 1 - i)) % 12) + 12) % 12;
     return { leftPct: +((i / (L - 1)) * 100).toFixed(1), text: MONTHS[mi] };
   });
-  const startTotal = totalSeries[0] || 0;
   const points: EvolutionPoint[] = verseSeries.map((v, i) => {
     const t = totalSeries[i];
     const pointDate = new Date(now.getFullYear(), now.getMonth() - (L - 1 - i), 1);
@@ -216,7 +215,12 @@ export function buildEvolution(evoVerse: number[], evoTotal: number[], period: P
       yPctTotal: +((ptsTotal[i][1] / H) * 100).toFixed(2),
       valueVerse: v,
       valueTotal: t,
-      pctFromStart: startTotal > 0 ? +(((t - startTotal) / startTotal) * 100).toFixed(2) : 0,
+      // Comparé au capital versé À CE POINT, pas au premier point de la
+      // fenêtre affichée — sinon un début de série proche de 0€ (avant le
+      // premier dépôt significatif) fait exploser le pourcentage (ex: une
+      // valeur de départ de 50€ rend +300€ de plus-value ultérieure = +600%,
+      // alors que la vraie performance vs dépôts est de quelques %).
+      pctVsDeposits: v > 0 ? +(((t - v) / v) * 100).toFixed(2) : 0,
       dateLabel: pointDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }),
     };
   });

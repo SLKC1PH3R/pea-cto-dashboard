@@ -1284,8 +1284,8 @@ function EvolutionSvg({
                 <span style={num} className="font-semibold text-[var(--fg2)]">{eur(hovered.valueVerse)}</span>
               </div>
             </div>
-            <div className={hovered.pctFromStart >= 0 ? "mt-[2px] text-[var(--pos)]" : "mt-[2px] text-[var(--neg)]"}>
-              {signPct(hovered.pctFromStart)} depuis le début de la période
+            <div className={hovered.pctVsDeposits >= 0 ? "mt-[2px] text-[var(--pos)]" : "mt-[2px] text-[var(--neg)]"}>
+              {signPct(hovered.pctVsDeposits)} vs capital versé
             </div>
           </div>
         </>
