@@ -37,6 +37,7 @@ import { ProfileSettings } from "@/components/profile/ProfileSettings";
 import { InstallFolioButton } from "@/components/pwa/InstallFolioButton";
 import { AccountManager } from "@/components/import/AccountManager";
 import { ImportDropzone } from "@/components/import/ImportDropzone";
+import { PerformanceCsvImport } from "@/components/import/PerformanceCsvImport";
 import { ManualTransactionForm } from "@/components/import/ManualTransactionForm";
 import { DcaRuleForm } from "@/components/import/DcaRuleForm";
 import { DcaRulesManager } from "@/components/import/DcaRulesManager";
@@ -1145,6 +1146,15 @@ export function AtelierDashboard({
                       <h3 className="mb-1 text-[15px] font-bold text-[var(--fg)]">Plans existants</h3>
                       <DcaRulesManager />
                     </div>
+                  </section>
+
+                  <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+                    <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Historique de valorisation (CSV)</h2>
+                    <p className="mb-4 text-[12.5px] text-[var(--fg2)]">
+                      Export "Performance" du courtier (date + valorisation quotidienne) — remplace l&apos;estimation par cours
+                      mensuels dans la courbe Capital total par les vraies valeurs, quand elles couvrent la période affichée.
+                    </p>
+                    <PerformanceCsvImport accounts={accounts} />
                   </section>
                 </>
               )}

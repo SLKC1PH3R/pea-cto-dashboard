@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getQuotes } from "@/lib/finnhub";
 import { getBoursoramaQuoteByIsin, type BoursoramaQuote } from "@/lib/boursorama-quote";
 import { getTradingViewQuoteByIsin, type TradingViewQuote } from "@/lib/tradingview-quote";
-import { getYahooQuotes, getYahooMonthlyHistories, type YahooQuote } from "@/lib/yahoo-quote";
+import { getYahooQuotes, getYahooMonthlyHistories, getYahooDailyHistories, type YahooQuote } from "@/lib/yahoo-quote";
 import { findIsinByTicker } from "@/lib/parsers/asset-mapping";
 import { syncAllActiveDcaRules } from "@/lib/dca-sync";
 import { currentQuantity, averageCostPrice, totalAcquisitionCost, realizedPnl } from "@/lib/finance-calculations";
@@ -109,9 +109,12 @@ function nearestHistoricalPrice(history: Record<string, number>, key: string): n
  * par mois, à partir de la quantité réellement détenue à chaque date (connue
  * avec certitude via l'historique des transactions) et des cours de clôture
  * mensuels Yahoo Finance. Si Yahoo ne couvre pas le mois/l'actif, on replie
- * sur le PRU à cette date plutôt que d'inventer un cours.
+ * sur le PRU à cette date plutôt que d'inventer un cours. C'est une
+ * APPROXIMATION — utilisée seulement quand on n'a pas mieux (cf.
+ * `buildMonthlyTotalValueSeries` ci-dessous, qui préfère les vraies
+ * valorisations importées via CSV quand elles existent).
  */
-async function buildMonthlyTotalValueSeries(
+async function buildEstimatedMonthlySeries(
   monthKeys: string[],
   positions: { asset: { ticker: string }; transactions: { type: "BUY" | "SELL"; quantity: Decimal; price: Decimal; fees: Decimal; date: Date }[] }[],
   depositsCumulative: number[]
@@ -138,6 +141,134 @@ async function buildMonthlyTotalValueSeries(
     const cash = Math.max(depositsCumulative[i] - costBasis, 0);
     return marketValue + cash;
   });
+}
+
+/** Valorisation réelle la plus proche d'une date cible, si elle tombe dans la tolérance (sinon `null` — pas d'extrapolation). */
+function findNearestSnapshotValue(snapshots: { date: Date; value: number }[], target: Date, toleranceDays: number): number | null {
+  let best: { date: Date; value: number } | null = null;
+  let bestDiffMs = Infinity;
+  for (const s of snapshots) {
+    const diff = Math.abs(s.date.getTime() - target.getTime());
+    if (diff < bestDiffMs) {
+      bestDiffMs = diff;
+      best = s;
+    }
+  }
+  if (!best) return null;
+  return bestDiffMs <= toleranceDays * 24 * 60 * 60 * 1000 ? best.value : null;
+}
+
+/**
+ * Valeur totale réelle du portefeuille, mois par mois — préfère la vraie
+ * valorisation importée du courtier (PortfolioSnapshot, cf. CSV "Performance")
+ * quand TOUS les comptes de l'utilisateur ont un point réel à ±5 jours du
+ * mois concerné, et replie sur `buildEstimatedMonthlySeries` sinon. On ne
+ * mélange jamais réel et estimé au sein d'un même mois (mauvaise lisibilité
+ * sinon : un mois "moitié vrai moitié deviné" n'a pas de sens à interpréter).
+ */
+async function buildMonthlyTotalValueSeries(
+  monthKeys: string[],
+  positions: { asset: { ticker: string }; transactions: { type: "BUY" | "SELL"; quantity: Decimal; price: Decimal; fees: Decimal; date: Date }[] }[],
+  depositsCumulative: number[],
+  accountIds: string[],
+  snapshotsByAccount: Map<string, { date: Date; value: number }[]>
+): Promise<number[]> {
+  const estimated = await buildEstimatedMonthlySeries(monthKeys, positions, depositsCumulative);
+  if (snapshotsByAccount.size === 0 || accountIds.length === 0) return estimated;
+
+  return monthKeys.map((key, i) => {
+    const [y, m] = key.split("-").map(Number);
+    const monthEnd = new Date(y, m, 0, 23, 59, 59, 999);
+
+    let sum = 0;
+    for (const accountId of accountIds) {
+      const snaps = snapshotsByAccount.get(accountId);
+      if (!snaps || snaps.length === 0) return estimated[i];
+      const nearest = findNearestSnapshotValue(snaps, monthEnd, 5);
+      if (nearest === null) return estimated[i];
+      sum += nearest;
+    }
+    return sum;
+  });
+}
+
+/** Repli sur le cours quotidien connu le plus proche dans le passé (≤10 jours — couvre week-ends/jours fériés), jamais vers l'avenir. */
+function nearestDailyPrice(history: Record<string, number>, day: string): number | undefined {
+  if (history[day] !== undefined) return history[day];
+  const d = new Date(`${day}T00:00:00.000Z`);
+  for (let i = 1; i <= 10; i++) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    const k = d.toISOString().slice(0, 10);
+    if (history[k] !== undefined) return history[k];
+  }
+  return undefined;
+}
+
+/**
+ * TWR ("time-weighted return") "maison", calculé jour par jour à partir des
+ * cours de clôture Yahoo Finance et des dépôts/retraits réels — utilisé
+ * uniquement quand aucun export CSV du courtier (PortfolioSnapshot) n'est
+ * disponible. Méthode standard à valorisation quotidienne : pour chaque jour
+ * de bourse, r = (V_jour - flux_du_jour) / V_jour_précédent - 1, puis on
+ * chaîne géométriquement. Reste une approximation (cours Yahoo peuvent
+ * différer légèrement de la valorisation interne du courtier, notamment sur
+ * les ETF PEA synthétiques peu liquides) — `null` si on n'a pas assez de
+ * données pour la calculer (pas de position, ou aucun cours Yahoo).
+ */
+async function computeSelfTwrPct(
+  positions: { asset: { ticker: string }; transactions: { type: "BUY" | "SELL"; quantity: Decimal; price: Decimal; fees: Decimal; date: Date }[] }[],
+  deposits: { amount: number; date: Date }[]
+): Promise<number | null> {
+  if (positions.length === 0 || deposits.length === 0) return null;
+
+  const tickers = [...new Set(positions.map((p) => p.asset.ticker))];
+  const histories = await getYahooDailyHistories(tickers);
+  if (Object.keys(histories).length === 0) return null;
+
+  const firstDepositDate = deposits.reduce((min, d) => (d.date < min ? d.date : min), deposits[0].date);
+  const allDays = new Set<string>();
+  for (const h of Object.values(histories)) for (const d of Object.keys(h)) allDays.add(d);
+  const days = [...allDays].filter((d) => d >= firstDepositDate.toISOString().slice(0, 10)).sort();
+  if (days.length < 2) return null;
+
+  const depositsByDay = new Map<string, number>();
+  for (const d of deposits) {
+    const key = d.date.toISOString().slice(0, 10);
+    depositsByDay.set(key, (depositsByDay.get(key) ?? 0) + d.amount);
+  }
+
+  function valueOnDay(day: string): number {
+    const cutoff = new Date(`${day}T23:59:59.999Z`);
+    let marketValue = 0;
+    let costBasis = 0;
+    for (const position of positions) {
+      const txs = position.transactions.filter((t) => t.date <= cutoff);
+      if (txs.length === 0) continue;
+      const qty = currentQuantity(txs);
+      costBasis += totalAcquisitionCost(txs);
+      if (qty <= 0) continue;
+      const history = histories[position.asset.ticker];
+      const price = (history && nearestDailyPrice(history, day)) ?? averageCostPrice(txs);
+      marketValue += qty * price;
+    }
+    let depositsCum = 0;
+    for (const d of deposits) if (d.date <= cutoff) depositsCum += d.amount;
+    const cash = Math.max(depositsCum - costBasis, 0);
+    return marketValue + cash;
+  }
+
+  let twr = 1;
+  let prevValue = valueOnDay(days[0]);
+  for (let i = 1; i < days.length; i++) {
+    const day = days[i];
+    const value = valueOnDay(day);
+    const cashflow = depositsByDay.get(day) ?? 0;
+    if (prevValue > 0) {
+      twr *= (value - cashflow) / prevValue;
+    }
+    prevValue = value;
+  }
+  return (twr - 1) * 100;
 }
 
 export async function getDashboardData(userId: string, userEmail: string | null | undefined): Promise<DashboardData> {
@@ -327,7 +458,33 @@ export async function getDashboardData(userId: string, userEmail: string | null 
           now
         );
   const evo = buildMonthlyCumulativeDeposits(deposits, monthKeys);
-  const evoTotal = await buildMonthlyTotalValueSeries(monthKeys, allPositions, evo);
+
+  const rawSnapshots = await prisma.portfolioSnapshot.findMany({
+    where: { accountId: { in: accounts.map((a) => a.id) } },
+    select: { accountId: true, date: true, value: true, cumulativeReturnPct: true },
+    orderBy: { date: "asc" },
+  });
+  const snapshotsByAccount = new Map<string, { date: Date; value: number }[]>();
+  // Dernier point connu par compte (le plus récent), pour le TWR "Performance
+  // globale" affiché — distinct des séries mensuelles ci-dessus.
+  const latestSnapshotByAccount = new Map<string, { date: Date; value: number; cumulativeReturnPct: number | null }>();
+  for (const s of rawSnapshots) {
+    const arr = snapshotsByAccount.get(s.accountId) ?? [];
+    arr.push({ date: s.date, value: s.value.toNumber() });
+    snapshotsByAccount.set(s.accountId, arr);
+    latestSnapshotByAccount.set(s.accountId, {
+      date: s.date,
+      value: s.value.toNumber(),
+      cumulativeReturnPct: s.cumulativeReturnPct ? s.cumulativeReturnPct.toNumber() : null,
+    });
+  }
+  const evoTotal = await buildMonthlyTotalValueSeries(
+    monthKeys,
+    allPositions,
+    evo,
+    accounts.map((a) => a.id),
+    snapshotsByAccount
+  );
 
   // ── Frais réels
   const fees = accounts.flatMap((a) => a.fees);
@@ -338,8 +495,34 @@ export async function getDashboardData(userId: string, userEmail: string | null 
   for (const f of fees) feeItemsMap.set(f.type, (feeItemsMap.get(f.type) ?? 0) + f.amount.toNumber());
 
   const totalPnl = totalValue - totalCost;
-  const totalPnlPct = totalCost > 0 ? totalPnl / totalCost : 0;
   const dayPct = totalValue > 0 ? (dayAbsSum / totalValue) * 100 : 0;
+
+  // ── Performance globale ("Performance totale") : TWR plutôt qu'un simple
+  // ratio plus-value/coût — priorité au TWR réel du courtier (importé via
+  // CSV, cf. "Perf cumulée portefeuille"), repli sur un TWR "maison" calculé
+  // au jour le jour via Yahoo Finance quand aucun CSV récent n'est dispo, et
+  // en dernier recours le ratio simple plus-value/coût (toujours mieux que
+  // rien si on n'a ni CSV ni cours historiques exploitables).
+  const recentCutoff = new Date();
+  recentCutoff.setDate(recentCutoff.getDate() - 10);
+  const recentSnapshots = [...latestSnapshotByAccount.entries()].filter(([, s]) => s.cumulativeReturnPct !== null && s.date >= recentCutoff);
+
+  let totalPnlPct: number;
+  if (recentSnapshots.length > 0 && recentSnapshots.length === accounts.length) {
+    // Moyenne pondérée par la valeur actuelle de chaque compte — exact pour
+    // un seul compte (cas le plus courant), approximation raisonnable sinon.
+    const totalWeight = recentSnapshots.reduce((s, [accId]) => s + (accountSummaries.find((a) => a.id === accId)?.total ?? 0), 0);
+    totalPnlPct =
+      totalWeight > 0
+        ? recentSnapshots.reduce((s, [accId, snap]) => {
+            const weight = accountSummaries.find((a) => a.id === accId)?.total ?? 0;
+            return s + ((snap.cumulativeReturnPct ?? 0) / 100) * (weight / totalWeight);
+          }, 0)
+        : 0;
+  } else {
+    const selfTwr = await computeSelfTwrPct(allPositions, deposits.map((d) => ({ amount: d.amount.toNumber(), date: d.date })));
+    totalPnlPct = selfTwr !== null ? selfTwr / 100 : totalCost > 0 ? totalPnl / totalCost : 0;
+  }
 
   // ── Allocation par type d'actif (+ liquidités)
   const allocTotal = totalValue + cash;
