@@ -33,6 +33,7 @@ import {
 import { MarketsBrowser } from "@/components/markets/MarketsBrowser";
 import { GoalForm } from "@/components/objectifs/GoalForm";
 import { ProfileSettings } from "@/components/profile/ProfileSettings";
+import { InstallFolioButton } from "@/components/pwa/InstallFolioButton";
 import { AccountManager } from "@/components/import/AccountManager";
 import { ImportDropzone } from "@/components/import/ImportDropzone";
 import { ManualTransactionForm } from "@/components/import/ManualTransactionForm";
@@ -310,6 +311,7 @@ export function AtelierDashboard({
                 </button>
               ))}
             </div>
+            <InstallFolioButton />
             <div className="flex items-center gap-[9px] rounded-xl border border-[var(--line)] bg-[var(--panel)] px-[14px] py-2">
               <span className="text-[12px] text-[var(--fg3)]">Valeur totale</span>
               <span style={num} className="text-[13px] font-semibold text-[var(--fg)]">{eur(data.total)}</span>

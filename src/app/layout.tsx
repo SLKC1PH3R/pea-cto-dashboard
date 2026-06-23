@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
-import { InstallFolioButton } from "@/components/pwa/InstallFolioButton";
 import "./globals.css";
 
 const bodyFont = Plus_Jakarta_Sans({
@@ -61,7 +60,6 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <SessionProvider>{children}</SessionProvider>
         <ServiceWorkerRegister />
-        <InstallFolioButton />
       </body>
     </html>
   );
