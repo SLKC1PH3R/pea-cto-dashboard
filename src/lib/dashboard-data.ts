@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getQuotes } from "@/lib/finnhub";
 import { getBoursoramaQuoteByIsin, type BoursoramaQuote } from "@/lib/boursorama-quote";
 import { getTradingViewQuoteByIsin, type TradingViewQuote } from "@/lib/tradingview-quote";
-import { getYahooQuotes, getYahooMonthlyHistories, getYahooDailyHistories, type YahooQuote } from "@/lib/yahoo-quote";
+import { getYahooQuotes, getYahooMonthlyHistories, type YahooQuote } from "@/lib/yahoo-quote";
 import { findIsinByTicker } from "@/lib/parsers/asset-mapping";
 import { syncAllActiveDcaRules } from "@/lib/dca-sync";
 import { currentQuantity, averageCostPrice, totalAcquisitionCost, realizedPnl } from "@/lib/finance-calculations";
@@ -190,85 +190,6 @@ async function buildMonthlyTotalValueSeries(
     }
     return sum;
   });
-}
-
-/** Repli sur le cours quotidien connu le plus proche dans le passé (≤10 jours — couvre week-ends/jours fériés), jamais vers l'avenir. */
-function nearestDailyPrice(history: Record<string, number>, day: string): number | undefined {
-  if (history[day] !== undefined) return history[day];
-  const d = new Date(`${day}T00:00:00.000Z`);
-  for (let i = 1; i <= 10; i++) {
-    d.setUTCDate(d.getUTCDate() - 1);
-    const k = d.toISOString().slice(0, 10);
-    if (history[k] !== undefined) return history[k];
-  }
-  return undefined;
-}
-
-/**
- * TWR ("time-weighted return") "maison", calculé jour par jour à partir des
- * cours de clôture Yahoo Finance et des dépôts/retraits réels — utilisé
- * uniquement quand aucun export CSV du courtier (PortfolioSnapshot) n'est
- * disponible. Méthode standard à valorisation quotidienne : pour chaque jour
- * de bourse, r = (V_jour - flux_du_jour) / V_jour_précédent - 1, puis on
- * chaîne géométriquement. Reste une approximation (cours Yahoo peuvent
- * différer légèrement de la valorisation interne du courtier, notamment sur
- * les ETF PEA synthétiques peu liquides) — `null` si on n'a pas assez de
- * données pour la calculer (pas de position, ou aucun cours Yahoo).
- */
-async function computeSelfTwrPct(
-  positions: { asset: { ticker: string }; transactions: { type: "BUY" | "SELL"; quantity: Decimal; price: Decimal; fees: Decimal; date: Date }[] }[],
-  deposits: { amount: number; date: Date }[]
-): Promise<number | null> {
-  if (positions.length === 0 || deposits.length === 0) return null;
-
-  const tickers = [...new Set(positions.map((p) => p.asset.ticker))];
-  const histories = await getYahooDailyHistories(tickers);
-  if (Object.keys(histories).length === 0) return null;
-
-  const firstDepositDate = deposits.reduce((min, d) => (d.date < min ? d.date : min), deposits[0].date);
-  const allDays = new Set<string>();
-  for (const h of Object.values(histories)) for (const d of Object.keys(h)) allDays.add(d);
-  const days = [...allDays].filter((d) => d >= firstDepositDate.toISOString().slice(0, 10)).sort();
-  if (days.length < 2) return null;
-
-  const depositsByDay = new Map<string, number>();
-  for (const d of deposits) {
-    const key = d.date.toISOString().slice(0, 10);
-    depositsByDay.set(key, (depositsByDay.get(key) ?? 0) + d.amount);
-  }
-
-  function valueOnDay(day: string): number {
-    const cutoff = new Date(`${day}T23:59:59.999Z`);
-    let marketValue = 0;
-    let costBasis = 0;
-    for (const position of positions) {
-      const txs = position.transactions.filter((t) => t.date <= cutoff);
-      if (txs.length === 0) continue;
-      const qty = currentQuantity(txs);
-      costBasis += totalAcquisitionCost(txs);
-      if (qty <= 0) continue;
-      const history = histories[position.asset.ticker];
-      const price = (history && nearestDailyPrice(history, day)) ?? averageCostPrice(txs);
-      marketValue += qty * price;
-    }
-    let depositsCum = 0;
-    for (const d of deposits) if (d.date <= cutoff) depositsCum += d.amount;
-    const cash = Math.max(depositsCum - costBasis, 0);
-    return marketValue + cash;
-  }
-
-  let twr = 1;
-  let prevValue = valueOnDay(days[0]);
-  for (let i = 1; i < days.length; i++) {
-    const day = days[i];
-    const value = valueOnDay(day);
-    const cashflow = depositsByDay.get(day) ?? 0;
-    if (prevValue > 0) {
-      twr *= (value - cashflow) / prevValue;
-    }
-    prevValue = value;
-  }
-  return (twr - 1) * 100;
 }
 
 export async function getDashboardData(userId: string, userEmail: string | null | undefined): Promise<DashboardData> {
@@ -461,22 +382,14 @@ export async function getDashboardData(userId: string, userEmail: string | null 
 
   const rawSnapshots = await prisma.portfolioSnapshot.findMany({
     where: { accountId: { in: accounts.map((a) => a.id) } },
-    select: { accountId: true, date: true, value: true, cumulativeReturnPct: true },
+    select: { accountId: true, date: true, value: true },
     orderBy: { date: "asc" },
   });
   const snapshotsByAccount = new Map<string, { date: Date; value: number }[]>();
-  // Dernier point connu par compte (le plus récent), pour le TWR "Performance
-  // globale" affiché — distinct des séries mensuelles ci-dessus.
-  const latestSnapshotByAccount = new Map<string, { date: Date; value: number; cumulativeReturnPct: number | null }>();
   for (const s of rawSnapshots) {
     const arr = snapshotsByAccount.get(s.accountId) ?? [];
     arr.push({ date: s.date, value: s.value.toNumber() });
     snapshotsByAccount.set(s.accountId, arr);
-    latestSnapshotByAccount.set(s.accountId, {
-      date: s.date,
-      value: s.value.toNumber(),
-      cumulativeReturnPct: s.cumulativeReturnPct ? s.cumulativeReturnPct.toNumber() : null,
-    });
   }
   const evoTotal = await buildMonthlyTotalValueSeries(
     monthKeys,
@@ -497,32 +410,13 @@ export async function getDashboardData(userId: string, userEmail: string | null 
   const totalPnl = totalValue - totalCost;
   const dayPct = totalValue > 0 ? (dayAbsSum / totalValue) * 100 : 0;
 
-  // ── Performance globale ("Performance totale") : TWR plutôt qu'un simple
-  // ratio plus-value/coût — priorité au TWR réel du courtier (importé via
-  // CSV, cf. "Perf cumulée portefeuille"), repli sur un TWR "maison" calculé
-  // au jour le jour via Yahoo Finance quand aucun CSV récent n'est dispo, et
-  // en dernier recours le ratio simple plus-value/coût (toujours mieux que
-  // rien si on n'a ni CSV ni cours historiques exploitables).
-  const recentCutoff = new Date();
-  recentCutoff.setDate(recentCutoff.getDate() - 10);
-  const recentSnapshots = [...latestSnapshotByAccount.entries()].filter(([, s]) => s.cumulativeReturnPct !== null && s.date >= recentCutoff);
-
-  let totalPnlPct: number;
-  if (recentSnapshots.length > 0 && recentSnapshots.length === accounts.length) {
-    // Moyenne pondérée par la valeur actuelle de chaque compte — exact pour
-    // un seul compte (cas le plus courant), approximation raisonnable sinon.
-    const totalWeight = recentSnapshots.reduce((s, [accId]) => s + (accountSummaries.find((a) => a.id === accId)?.total ?? 0), 0);
-    totalPnlPct =
-      totalWeight > 0
-        ? recentSnapshots.reduce((s, [accId, snap]) => {
-            const weight = accountSummaries.find((a) => a.id === accId)?.total ?? 0;
-            return s + ((snap.cumulativeReturnPct ?? 0) / 100) * (weight / totalWeight);
-          }, 0)
-        : 0;
-  } else {
-    const selfTwr = await computeSelfTwrPct(allPositions, deposits.map((d) => ({ amount: d.amount.toNumber(), date: d.date })));
-    totalPnlPct = selfTwr !== null ? selfTwr / 100 : totalCost > 0 ? totalPnl / totalCost : 0;
-  }
+  // ── Performance globale = (capitalisation totale - montant déposé) / montant
+  // déposé — pas un TWR (les tentatives de TWR "maison"/courtier produisaient
+  // des écarts aberrants sur les premiers mois, où le portefeuille démarre
+  // avec un capital quasi nul et fait diverger toute méthode basée sur un
+  // chaînage de ratios). Simple, robuste, et c'est explicitement la
+  // comparaison demandée : capital total réel vs argent réellement versé.
+  const totalPnlPct = totalDeposited > 0 ? (totalValue + cash - totalDeposited) / totalDeposited : 0;
 
   // ── Allocation par type d'actif (+ liquidités)
   const allocTotal = totalValue + cash;

@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
     rows.map((r) =>
       prisma.portfolioSnapshot.upsert({
         where: { accountId_date: { accountId, date: r.date } },
-        update: { value: r.value, cumulativeReturnPct: r.cumulativeReturnPct },
-        create: { accountId, date: r.date, value: r.value, cumulativeReturnPct: r.cumulativeReturnPct },
+        update: { value: r.value },
+        create: { accountId, date: r.date, value: r.value },
       })
     )
   );

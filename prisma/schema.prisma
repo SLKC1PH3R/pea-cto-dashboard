@@ -103,10 +103,6 @@ model PortfolioSnapshot {
   account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   date      DateTime
   value     Decimal  @db.Decimal(18, 2)
-  // Performance cumulée (TWR) telle que calculée par le courtier, si présente
-  // dans l'export CSV ("Perf cumulée portefeuille") — évite de la recalculer
-  // nous-mêmes : c'est la seule source qui reproduit exactement leur chiffre.
-  cumulativeReturnPct Decimal? @db.Decimal(9, 4)
   createdAt DateTime @default(now())
 
   @@unique([accountId, date])

@@ -35,6 +35,7 @@ import { MarketsBrowser } from "@/components/markets/MarketsBrowser";
 import { GoalForm } from "@/components/objectifs/GoalForm";
 import { ProfileSettings } from "@/components/profile/ProfileSettings";
 import { InstallFolioButton } from "@/components/pwa/InstallFolioButton";
+import { HistoryView } from "@/components/dashboard/HistoryView";
 import { AccountManager } from "@/components/import/AccountManager";
 import { ImportDropzone } from "@/components/import/ImportDropzone";
 import { PerformanceCsvImport } from "@/components/import/PerformanceCsvImport";
@@ -44,7 +45,7 @@ import { DcaRulesManager } from "@/components/import/DcaRulesManager";
 import { TransactionsManager } from "@/components/import/TransactionsManager";
 
 type SortKey = "name" | "value" | "day" | "totalPct" | "weight";
-type Page = "synthese" | "portefeuille" | "marches" | "objectifs" | "import";
+type Page = "synthese" | "portefeuille" | "historique" | "marches" | "objectifs" | "import";
 
 type AccountRow = { id: string; name: string; type: string; broker: string | null };
 
@@ -52,6 +53,7 @@ const PERIODS: Period[] = ["1M", "3M", "6M", "1A", "Max"];
 const PAGES: { key: Page; label: string }[] = [
   { key: "synthese", label: "Synthèse" },
   { key: "portefeuille", label: "Portefeuille" },
+  { key: "historique", label: "Historique" },
   { key: "marches", label: "Marchés" },
   { key: "objectifs", label: "Objectifs" },
   { key: "import", label: "Importer" },
@@ -750,6 +752,13 @@ export function AtelierDashboard({
                 </table>
               )}
             </section>
+          </div>
+        )}
+
+        {/* ════════════════════════ HISTORIQUE ════════════════════════ */}
+        {page === "historique" && (
+          <div className="grid grid-cols-12 items-stretch gap-[18px]">
+            <HistoryView />
           </div>
         )}
 
