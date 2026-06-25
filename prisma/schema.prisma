@@ -157,6 +157,7 @@ enum AssetType {
   ACTION
   ETF_DISTRIBUANT
   ETF_CAPITALISANT
+  CRYPTO
 }
 
 model Asset {
@@ -232,6 +233,10 @@ model Transaction {
   // la même quantité/le même montant (ex: un gros ordre exécuté en plusieurs
   // fois au même cours).
   externalRef String?
+  // Exécution d'un plan d'investissement programmé (Sparplan Trade Republic,
+  // DCA externe...) plutôt qu'un ordre manuel — indépendant de `dcaRuleId`,
+  // qui ne s'applique qu'aux plans gérés depuis cette appli.
+  isSavingsPlan Boolean @default(false)
   createdAt  DateTime @default(now())
 
   relatedFees Fee[]

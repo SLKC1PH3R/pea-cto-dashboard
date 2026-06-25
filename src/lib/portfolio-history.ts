@@ -56,6 +56,18 @@ export async function getPositionsHistoryForDate(userId: string, requestedDate: 
   const tickers = [...new Set(allPositions.map((p) => p.asset.ticker))];
   const histories = tickers.length > 0 ? await getYahooDailyHistories(tickers) : {};
 
+  // Cache local alimenté par le cron /api/cron/refresh-prices — quand il
+  // couvre le jour demandé, on le préfère à Yahoo Finance (notre propre
+  // capture, cohérente avec le reste de l'appli) ; sinon repli sur Yahoo.
+  const cachedPrices =
+    tickers.length > 0
+      ? await prisma.priceHistory.findMany({
+          where: { ticker: { in: tickers }, date: new Date(`${day}T00:00:00.000Z`) },
+          select: { ticker: true, close: true },
+        })
+      : [];
+  const cachedByTicker = new Map(cachedPrices.map((p) => [p.ticker, p.close.toNumber()]));
+
   let totalValue = 0;
   const rows: HistoryPositionRow[] = [];
 
@@ -69,7 +81,7 @@ export async function getPositionsHistoryForDate(userId: string, requestedDate: 
     if (qty <= 0) continue;
 
     const history = histories[position.asset.ticker];
-    const price = (history && nearestDailyPrice(history, day)) ?? averageCostPrice(txs);
+    const price = cachedByTicker.get(position.asset.ticker) ?? (history && nearestDailyPrice(history, day)) ?? averageCostPrice(txs);
     const prevPrice = (history && previousTradingDayPrice(history, day)) ?? price;
 
     const value = qty * price;

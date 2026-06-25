@@ -38,6 +38,7 @@ import { InstallFolioButton } from "@/components/pwa/InstallFolioButton";
 import { HistoryView } from "@/components/dashboard/HistoryView";
 import { AccountManager } from "@/components/import/AccountManager";
 import { ImportDropzone } from "@/components/import/ImportDropzone";
+import { TRCsvImport } from "@/components/import/TRCsvImport";
 import { PerformanceCsvImport } from "@/components/import/PerformanceCsvImport";
 import { ManualTransactionForm } from "@/components/import/ManualTransactionForm";
 import { DcaRuleForm } from "@/components/import/DcaRuleForm";
@@ -210,6 +211,16 @@ export function AtelierDashboard({
     const max = Math.max(...data.sectors.map((s) => s.pct), 1);
     return data.sectors.map((s) => ({ ...s, barPct: (s.pct / max) * 100 }));
   }, [data.sectors]);
+
+  const geo = useMemo(() => {
+    const max = Math.max(...data.geo.map((s) => s.pct), 1);
+    return data.geo.map((s) => ({ ...s, barPct: (s.pct / max) * 100 }));
+  }, [data.geo]);
+
+  const currencies = useMemo(() => {
+    const max = Math.max(...data.currencies.map((s) => s.pct), 1);
+    return data.currencies.map((s) => ({ ...s, barPct: (s.pct / max) * 100 }));
+  }, [data.currencies]);
 
   // ── Temps estimé pour atteindre l'objectif, recalculé dès que le total
   // réel (donc le PnL), le rythme de versement ou le taux changent ──────
@@ -587,6 +598,44 @@ export function AtelierDashboard({
               ) : (
                 <div className="flex flex-col gap-[14px]">
                   {sectors.map((s) => (
+                    <div key={s.label} className="flex items-center gap-[14px]">
+                      <span className="w-[130px] flex-none text-[13px] text-[var(--fg2)]">{s.label}</span>
+                      <div className="h-[10px] flex-1 overflow-hidden rounded-[6px] bg-[var(--track)]">
+                        <div className="h-full rounded-[6px]" style={{ width: `${s.barPct}%`, background: s.color }} />
+                      </div>
+                      <span style={num} className="w-12 text-right text-[13px] font-bold text-[var(--fg)]">{s.pct} %</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="col-span-6 rounded-[22px] border border-[var(--line)] bg-[var(--panel)] p-6" style={{ boxShadow: "var(--shadow)" }}>
+              <h2 className="mb-[18px] text-[17px] font-bold text-[var(--fg)]">Répartition géographique</h2>
+              {geo.length === 0 ? (
+                <p className="text-[13px] text-[var(--fg2)]">Aucune position pour l'instant.</p>
+              ) : (
+                <div className="flex flex-col gap-[14px]">
+                  {geo.map((s) => (
+                    <div key={s.label} className="flex items-center gap-[14px]">
+                      <span className="w-[130px] flex-none text-[13px] text-[var(--fg2)]">{s.label}</span>
+                      <div className="h-[10px] flex-1 overflow-hidden rounded-[6px] bg-[var(--track)]">
+                        <div className="h-full rounded-[6px]" style={{ width: `${s.barPct}%`, background: s.color }} />
+                      </div>
+                      <span style={num} className="w-12 text-right text-[13px] font-bold text-[var(--fg)]">{s.pct} %</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="col-span-6 rounded-[22px] border border-[var(--line)] bg-[var(--panel)] p-6" style={{ boxShadow: "var(--shadow)" }}>
+              <h2 className="mb-[18px] text-[17px] font-bold text-[var(--fg)]">Exposition devises</h2>
+              {currencies.length === 0 ? (
+                <p className="text-[13px] text-[var(--fg2)]">Aucune position pour l'instant.</p>
+              ) : (
+                <div className="flex flex-col gap-[14px]">
+                  {currencies.map((s) => (
                     <div key={s.label} className="flex items-center gap-[14px]">
                       <span className="w-[130px] flex-none text-[13px] text-[var(--fg2)]">{s.label}</span>
                       <div className="h-[10px] flex-1 overflow-hidden rounded-[6px] bg-[var(--track)]">
@@ -1121,6 +1170,10 @@ export function AtelierDashboard({
           <div className="grid grid-cols-12 gap-[18px]">
             <div className="col-span-6 flex flex-col gap-[18px]">
               <AccountManager accounts={accounts} />
+
+              <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+                <TRCsvImport />
+              </section>
 
               {accounts.length === 0 ? (
                 <p className="text-[13px] text-[var(--fg2)]">

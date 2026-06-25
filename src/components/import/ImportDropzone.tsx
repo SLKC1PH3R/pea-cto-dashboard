@@ -32,6 +32,18 @@ type PreviewDeposit = {
   duplicate: boolean;
 };
 
+type PreviewDividend = {
+  date: string;
+  label: string;
+  assetName: string | null;
+  isin: string | null;
+  ticker: string | null;
+  resolvedName: string | null;
+  amount: number;
+  suggested: boolean;
+  duplicate: boolean;
+};
+
 type PreviewFileResult = {
   filename: string;
   status: "ok" | "warning" | "error";
@@ -39,11 +51,13 @@ type PreviewFileResult = {
   alreadyImported: boolean;
   transactions: PreviewTransaction[];
   deposits: PreviewDeposit[];
+  dividends: PreviewDividend[];
 };
 
 // État éditable d'une ligne de transaction côté preview, avant confirmation.
 type EditableTx = PreviewTransaction & { filename: string; included: boolean; key: string };
 type EditableDep = PreviewDeposit & { filename: string; included: boolean; key: string };
+type EditableDiv = PreviewDividend & { filename: string; included: boolean; key: string };
 
 type ImportDropzoneProps = {
   accounts: Account[];
@@ -57,6 +71,7 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
   const [fileErrors, setFileErrors] = useState<{ filename: string; message: string }[]>([]);
   const [txRows, setTxRows] = useState<EditableTx[]>([]);
   const [depRows, setDepRows] = useState<EditableDep[]>([]);
+  const [divRows, setDivRows] = useState<EditableDiv[]>([]);
   const [confirmFeedback, setConfirmFeedback] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +86,7 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
       setFileErrors([]);
       setTxRows([]);
       setDepRows([]);
+      setDivRows([]);
 
       const formData = new FormData();
       formData.set("accountId", selectedAccountId);
@@ -88,6 +104,7 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
         const results: PreviewFileResult[] = data.results;
         const newTxRows: EditableTx[] = [];
         const newDepRows: EditableDep[] = [];
+        const newDivRows: EditableDiv[] = [];
         const errors: { filename: string; message: string }[] = [];
 
         results.forEach((r, fi) => {
@@ -110,11 +127,20 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
               key: `${fi}-d${di}`,
             });
           });
+          r.dividends.forEach((d, di) => {
+            newDivRows.push({
+              ...d,
+              filename: r.filename,
+              included: !!d.ticker && !r.alreadyImported && !d.duplicate,
+              key: `${fi}-v${di}`,
+            });
+          });
         });
 
         setFileErrors(errors);
         setTxRows(newTxRows);
         setDepRows(newDepRows);
+        setDivRows(newDivRows);
       } catch {
         setFileErrors([{ filename: "—", message: "Erreur réseau lors de l'envoi des fichiers" }]);
       } finally {
@@ -140,18 +166,23 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
     setDepRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   }
 
+  function updateDivRow(key: string, patch: Partial<EditableDiv>) {
+    setDivRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
   async function handleConfirm() {
     setConfirming(true);
     setConfirmFeedback(null);
 
     const transactions = txRows.filter((r) => r.included && r.ticker);
     const deposits = depRows.filter((r) => r.included);
+    const dividends = divRows.filter((r) => r.included && r.ticker);
 
     try {
       const res = await fetch("/api/import/boursorama/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: selectedAccountId, transactions, deposits }),
+        body: JSON.stringify({ accountId: selectedAccountId, transactions, deposits, dividends }),
       });
       const data = await res.json();
 
@@ -159,11 +190,12 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
         setConfirmFeedback(data.error ?? "Erreur lors de la confirmation");
       } else {
         setConfirmFeedback(
-          `${data.transactionsCreated} transaction(s) et ${data.depositsCreated} dépôt(s) ajoutés.` +
+          `${data.transactionsCreated} transaction(s), ${data.depositsCreated} dépôt(s) et ${data.dividendsCreated} dividende(s) ajoutés.` +
             (data.errors?.length ? ` ${data.errors.length} ligne(s) ignorée(s).` : "")
         );
         setTxRows([]);
         setDepRows([]);
+        setDivRows([]);
         router.refresh();
       }
     } catch {
@@ -173,8 +205,9 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
     }
   }
 
-  const hasPreview = txRows.length > 0 || depRows.length > 0;
-  const includedCount = txRows.filter((r) => r.included).length + depRows.filter((r) => r.included).length;
+  const hasPreview = txRows.length > 0 || depRows.length > 0 || divRows.length > 0;
+  const includedCount =
+    txRows.filter((r) => r.included).length + depRows.filter((r) => r.included).length + divRows.filter((r) => r.included).length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -352,6 +385,59 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
             </div>
           )}
 
+          {divRows.length > 0 && (
+            <div className="overflow-hidden rounded-[14px] border" style={{ borderColor: "var(--line)" }}>
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: "var(--line)" }}>
+                    <th className="w-8 px-3 py-2"></th>
+                    <th className="px-2 py-2 text-left text-[11px] uppercase text-[var(--fg3)]">Date</th>
+                    <th className="px-2 py-2 text-left text-[11px] uppercase text-[var(--fg3)]">Actif</th>
+                    <th className="px-2 py-2 text-left text-[11px] uppercase text-[var(--fg3)]">Ticker</th>
+                    <th className="px-2 py-2 text-right text-[11px] uppercase text-[var(--fg3)]">Montant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {divRows.map((r) => (
+                    <tr key={r.key} className="border-b" style={{ borderColor: "var(--line)" }}>
+                      <td className="px-3 py-2">
+                        <input type="checkbox" checked={r.included} onChange={(e) => updateDivRow(r.key, { included: e.target.checked })} />
+                      </td>
+                      <td className="px-2 py-2 text-[var(--fg2)]">
+                        {new Date(r.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                      </td>
+                      <td className="px-2 py-2 text-[var(--fg)]">{r.resolvedName ?? r.assetName ?? r.label}</td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={r.ticker ?? ""}
+                          onChange={(e) => updateDivRow(r.key, { ticker: e.target.value.toUpperCase(), suggested: false })}
+                          placeholder="ticker manquant"
+                          className="w-24 rounded-[6px] border px-2 py-1 text-[12px] outline-none"
+                          style={{
+                            borderColor: !r.ticker ? "var(--neg)" : r.suggested ? "var(--accent2)" : "var(--line)",
+                            background: "var(--panel2)",
+                            color: "var(--fg)",
+                          }}
+                        />
+                        {r.suggested && (
+                          <div className="mt-[3px] text-[10px]" style={{ color: "var(--accent2)" }}>
+                            suggestion auto · à vérifier
+                          </div>
+                        )}
+                        {r.duplicate && (
+                          <div className="mt-[3px] text-[10px]" style={{ color: "var(--neg)" }}>
+                            doublon probable · déjà importé
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-right text-[var(--fg2)]">{r.amount.toLocaleString("fr-FR")} €</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -367,6 +453,7 @@ export function ImportDropzone({ accounts }: ImportDropzoneProps) {
               onClick={() => {
                 setTxRows([]);
                 setDepRows([]);
+                setDivRows([]);
                 setFileErrors([]);
               }}
               className="rounded-[11px] border px-4 py-[9px] text-[13px] font-medium text-[var(--fg2)]"

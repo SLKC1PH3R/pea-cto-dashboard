@@ -20,7 +20,7 @@ export type KnownAsset = {
   ticker?: string;
   isin?: string;
   name: string;
-  assetType: "ACTION" | "ETF_DISTRIBUANT" | "ETF_CAPITALISANT";
+  assetType: "ACTION" | "ETF_DISTRIBUANT" | "ETF_CAPITALISANT" | "CRYPTO";
   sector?: string;
   region?: string;
   currency: string;
@@ -63,6 +63,18 @@ export const KNOWN_ASSETS: KnownAsset[] = [
     name: "iShares MSCI World Small Cap",
     assetType: "ETF_CAPITALISANT",
     sector: "Diversifié",
+    region: "Monde",
+    currency: "EUR",
+  },
+  {
+    // Trade Republic identifie le Bitcoin par un pseudo-ISIN interne
+    // (XF000BTC0017, pas un vrai ISIN) plutôt qu'un ticker boursier.
+    matchFragments: ["BITCOIN", "BTC"],
+    ticker: "BTC-EUR",
+    isin: "XF000BTC0017",
+    name: "Bitcoin",
+    assetType: "CRYPTO",
+    sector: "Cryptomonnaies",
     region: "Monde",
     currency: "EUR",
   },

@@ -23,6 +23,7 @@ export async function GET() {
       price: t.price.toNumber(),
       fees: t.fees.toNumber(),
       note: t.note,
+      status: t.status,
       sourceDocument: t.sourceDocument,
       accountName: t.position.account.name,
       assetName: t.position.asset.name,

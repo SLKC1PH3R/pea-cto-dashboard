@@ -40,6 +40,10 @@ yarn-error.log*
 # audit
 lighthouse-report.json
 
+# exports de courtier réels (données personnelles, jamais à committer)
+*.csv
+!prisma/**/*.csv
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

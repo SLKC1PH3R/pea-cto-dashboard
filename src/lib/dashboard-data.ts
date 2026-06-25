@@ -248,6 +248,8 @@ export async function getDashboardData(userId: string, userEmail: string | null 
   const closedPositions: ClosedPosition[] = []; // positions intégralement vendues (qty = 0)
   const allocMap = new Map<string, number>();
   const sectorMap = new Map<string, number>();
+  const geoMap = new Map<string, number>();
+  const currencyMap = new Map<string, number>();
 
   for (const position of allPositions) {
     const txs = position.transactions.map((t) => ({
@@ -300,6 +302,12 @@ export async function getDashboardData(userId: string, userEmail: string | null 
 
     const sectorLabel = position.asset.sector ?? "Autre";
     sectorMap.set(sectorLabel, (sectorMap.get(sectorLabel) ?? 0) + marketValue);
+
+    const geoLabel = position.asset.region ?? "Autre";
+    geoMap.set(geoLabel, (geoMap.get(geoLabel) ?? 0) + marketValue);
+
+    const currencyLabel = position.asset.currency;
+    currencyMap.set(currencyLabel, (currencyMap.get(currencyLabel) ?? 0) + marketValue);
 
     atelierPositions.push({
       name: position.asset.name,
@@ -438,6 +446,23 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     }))
     .sort((a, b) => b.pct - a.pct);
 
+  // ── Répartition géographique réelle (Asset.region) et exposition devises
+  // réelle (Asset.currency), toujours par valeur de marché des positions détenues.
+  const geo: Sector[] = Array.from(geoMap.entries())
+    .map(([label, value], i) => ({
+      label,
+      pct: totalValue > 0 ? Math.round((value / totalValue) * 100) : 0,
+      color: SECTOR_COLORS[i % SECTOR_COLORS.length],
+    }))
+    .sort((a, b) => b.pct - a.pct);
+  const currencies: Sector[] = Array.from(currencyMap.entries())
+    .map(([label, value], i) => ({
+      label,
+      pct: totalValue > 0 ? Math.round((value / totalValue) * 100) : 0,
+      color: SECTOR_COLORS[i % SECTOR_COLORS.length],
+    }))
+    .sort((a, b) => b.pct - a.pct);
+
   // ── Watchlist : cotation Finnhub si disponible, sinon Yahoo Finance
   // (direct par ticker), sinon tradingview.com puis boursorama.com (via
   // l'ISIN connu du ticker), sinon cours saisi manuellement — un actif suivi
@@ -564,6 +589,8 @@ export async function getDashboardData(userId: string, userEmail: string | null 
     tx,
     dateLabel: new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }),
     sectors,
+    geo,
+    currencies,
     accounts: accountSummaries,
     watchlist,
     totalRealizedPnl,

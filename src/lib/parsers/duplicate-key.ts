@@ -49,3 +49,7 @@ export function txReferenceKey(reference: string): string {
 export function depositDuplicateKey(amount: number, date: Date): string {
   return `${dayKey(date)}|${amount.toFixed(2)}`;
 }
+
+export function dividendDuplicateKey(ticker: string, amount: number, date: Date): string {
+  return `${ticker.toUpperCase()}|${dayKey(date)}|${amount.toFixed(2)}`;
+}

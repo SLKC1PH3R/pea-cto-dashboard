@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
-import { txHeuristicKey, txHeuristicKeyVariants, txReferenceKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
+import { txHeuristicKey, txHeuristicKeyVariants, txReferenceKey, depositDuplicateKey, dividendDuplicateKey } from "@/lib/parsers/duplicate-key";
+import { findReconcilableProjected } from "@/lib/dca-reconcile";
 
 type ConfirmTransaction = {
   filename: string;
@@ -24,6 +25,16 @@ type ConfirmDeposit = {
   amount: number;
 };
 
+type ConfirmDividend = {
+  filename: string;
+  date: string;
+  label: string;
+  assetName: string | null;
+  isin?: string | null;
+  ticker: string;
+  amount: number;
+};
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -31,10 +42,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { accountId, transactions, deposits } = body as {
+  const { accountId, transactions, deposits, dividends } = body as {
     accountId?: string;
     transactions?: ConfirmTransaction[];
     deposits?: ConfirmDeposit[];
+    dividends?: ConfirmDividend[];
   };
 
   if (!accountId) {
@@ -50,13 +62,16 @@ export async function POST(req: NextRequest) {
 
   let transactionsCreated = 0;
   let depositsCreated = 0;
+  let dividendsCreated = 0;
   const errors: string[] = [];
 
   // Filet de sécurité : revérifie les doublons par contenu au moment de la
   // confirmation (même logique que l'aperçu), au cas où une ligne signalée
-  // comme doublon aurait été cochée quand même.
+  // comme doublon aurait été cochée quand même. Limité aux transactions
+  // CONFIRMED — une PROJECTED est reconciliée (remplacée), pas traitée comme
+  // doublon, voir plus bas.
   const existingTx = await prisma.transaction.findMany({
-    where: { position: { accountId } },
+    where: { position: { accountId }, status: "CONFIRMED" },
     select: {
       date: true,
       quantity: true,
@@ -83,6 +98,14 @@ export async function POST(req: NextRequest) {
   );
   const existingDeposits = await prisma.deposit.findMany({ where: { accountId }, select: { date: true, amount: true } });
   const seenDepKeys = new Set(existingDeposits.map((d) => depositDuplicateKey(Number(d.amount), d.date)));
+
+  const existingDividends = await prisma.dividend.findMany({
+    where: { position: { accountId } },
+    select: { date: true, netAmount: true, position: { select: { asset: { select: { ticker: true } } } } },
+  });
+  const seenDivKeys = new Set(
+    existingDividends.map((d) => dividendDuplicateKey(d.position.asset.ticker, Number(d.netAmount), d.date))
+  );
 
   for (const tx of transactions ?? []) {
     const ticker = tx.ticker?.trim().toUpperCase();
@@ -152,6 +175,30 @@ export async function POST(req: NextRequest) {
 
       const unitPrice = tx.amount / tx.quantity;
 
+      // Si un achat planifié (DCA) existe à une date proche sur cette
+      // position, on le remplace par l'exécution réelle plutôt que d'en
+      // créer une seconde — c'est tout l'intérêt d'importer un relevé réel
+      // après avoir laissé tourner un plan d'investissement programmé.
+      const projected = tx.type === "BUY" ? await findReconcilableProjected(position.id, date) : null;
+
+      if (projected) {
+        await prisma.transaction.update({
+          where: { id: projected.id },
+          data: {
+            status: "CONFIRMED",
+            quantity: tx.quantity,
+            price: unitPrice,
+            fees: 0,
+            date,
+            sourceDocument: tx.filename,
+            externalRef: tx.reference ?? undefined,
+            note: `Projection DCA confirmée depuis PDF — ${tx.operationLabel}`,
+          },
+        });
+        transactionsCreated++;
+        continue;
+      }
+
       await prisma.transaction.create({
         data: {
           positionId: position.id,
@@ -160,7 +207,7 @@ export async function POST(req: NextRequest) {
           quantity: tx.quantity,
           price: unitPrice,
           fees: 0,
-          date: new Date(tx.date),
+          date,
           sourceDocument: tx.filename,
           externalRef: tx.reference ?? undefined,
           note: `Importé depuis PDF — ${tx.operationLabel}`,
@@ -196,5 +243,65 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ transactionsCreated, depositsCreated, errors });
+  for (const div of dividends ?? []) {
+    const ticker = div.ticker?.trim().toUpperCase();
+    if (!ticker) {
+      errors.push(`Dividende ${div.assetName ?? div.label} : ticker manquant, ligne ignorée`);
+      continue;
+    }
+
+    const depKey = dividendDuplicateKey(ticker, div.amount, new Date(div.date));
+    if (seenDivKeys.has(depKey)) {
+      errors.push(`Dividende ${div.assetName ?? ticker} : doublon détecté (même jour/actif/montant déjà en base), ligne ignorée`);
+      continue;
+    }
+    seenDivKeys.add(depKey);
+
+    try {
+      const byIsin = div.isin ? resolveAssetByIsin(div.isin) : null;
+      const resolution = byIsin ?? (div.assetName ? resolveAssetName(div.assetName) : { matched: false as const, rawName: ticker });
+      const known =
+        resolution.matched && (!resolution.asset.ticker || resolution.asset.ticker === ticker) ? resolution.asset : null;
+
+      const asset = await prisma.asset.upsert({
+        where: { ticker },
+        update: {},
+        create: known
+          ? {
+              ticker,
+              isin: known.isin,
+              name: known.name,
+              sector: known.sector,
+              region: known.region,
+              currency: known.currency,
+              assetType: known.assetType,
+              benchmarkTicker: known.benchmarkTicker,
+            }
+          : { ticker, isin: div.isin ?? undefined, name: div.assetName ?? ticker, assetType: "ACTION", currency: "EUR" },
+      });
+
+      const position = await prisma.position.upsert({
+        where: { accountId_assetId: { accountId, assetId: asset.id } },
+        update: {},
+        create: { accountId, assetId: asset.id },
+      });
+
+      await prisma.dividend.create({
+        data: {
+          positionId: position.id,
+          grossAmount: div.amount,
+          netAmount: div.amount,
+          withholding: 0,
+          currency: "EUR",
+          date: new Date(div.date),
+        },
+      });
+
+      dividendsCreated++;
+    } catch (err) {
+      errors.push(`Dividende ${div.assetName ?? ticker} : ${err instanceof Error ? err.message : "erreur lors de la création"}`);
+    }
+  }
+
+  return NextResponse.json({ transactionsCreated, depositsCreated, dividendsCreated, errors });
 }

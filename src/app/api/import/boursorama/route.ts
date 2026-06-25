@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { parseBoursoramaStatement } from "@/lib/parsers/boursorama-pdf";
 import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
 import { findTradingViewSymbolByIsin, findTradingViewSymbolByName, toDisplayTicker } from "@/lib/tradingview-quote";
-import { txHeuristicKey, txHeuristicKeyVariants, txReferenceKey, depositDuplicateKey } from "@/lib/parsers/duplicate-key";
+import { txHeuristicKey, txHeuristicKeyVariants, txReferenceKey, depositDuplicateKey, dividendDuplicateKey } from "@/lib/parsers/duplicate-key";
 import { PDFParse } from "pdf-parse";
 
 export type PreviewTransaction = {
@@ -53,6 +53,18 @@ export type PreviewDeposit = {
   duplicate: boolean;
 };
 
+export type PreviewDividend = {
+  date: string;
+  label: string;
+  assetName: string | null;
+  isin: string | null;
+  ticker: string | null;
+  resolvedName: string | null;
+  amount: number;
+  suggested: boolean;
+  duplicate: boolean;
+};
+
 type PreviewFileResult = {
   filename: string;
   status: "ok" | "warning" | "error";
@@ -60,6 +72,7 @@ type PreviewFileResult = {
   alreadyImported: boolean;
   transactions: PreviewTransaction[];
   deposits: PreviewDeposit[];
+  dividends: PreviewDividend[];
 };
 
 /**
@@ -105,8 +118,12 @@ export async function POST(req: NextRequest) {
   //   d'opéré). On ne compare jamais un avis à un autre avis sur cette seule
   //   empreinte : deux ordres distincts peuvent légitimement partager la
   //   même quantité/le même montant le même jour (exécution fractionnée).
+  // Seules les transactions CONFIRMED comptent comme doublons potentiels —
+  // une PROJECTED (exécution DCA en attente, cf. dca-sync.ts) ne doit jamais
+  // bloquer l'import d'une exécution réelle correspondante : elle sera
+  // remplacée par celle-ci à la confirmation (voir dca-reconcile.ts).
   const existingTx = await prisma.transaction.findMany({
-    where: { position: { accountId } },
+    where: { position: { accountId }, status: "CONFIRMED" },
     select: {
       date: true,
       quantity: true,
@@ -128,6 +145,14 @@ export async function POST(req: NextRequest) {
   const existingDeposits = await prisma.deposit.findMany({ where: { accountId }, select: { date: true, amount: true } });
   const seenDepKeys = new Set(existingDeposits.map((d) => depositDuplicateKey(Number(d.amount), d.date)));
 
+  const existingDividends = await prisma.dividend.findMany({
+    where: { position: { accountId } },
+    select: { date: true, netAmount: true, position: { select: { asset: { select: { ticker: true } } } } },
+  });
+  const seenDivKeys = new Set(
+    existingDividends.map((d) => dividendDuplicateKey(d.position.asset.ticker, Number(d.netAmount), d.date))
+  );
+
   // Phase 1 : parser chaque fichier et résoudre les tickers, sans encore
   // décider des doublons (qui se fait en phase 2, sur l'ensemble du batch —
   // voir plus bas pour pourquoi l'ordre de traitement des fichiers ne doit
@@ -143,6 +168,7 @@ export async function POST(req: NextRequest) {
       alreadyImported: false,
       transactions: [],
       deposits: [],
+      dividends: [],
     };
     let resolvedTransactions: Omit<ResolvedTx, "duplicate">[] = [];
 
@@ -229,6 +255,63 @@ export async function POST(req: NextRequest) {
           .filter(Boolean)
           .join(" ");
       }
+
+      result.dividends = await Promise.all(
+        parsed.dividends.map(async (div) => {
+          let ticker: string | null = null;
+          let resolvedName: string | null = null;
+          let suggested = false;
+
+          if (div.isin) {
+            const byIsin = resolveAssetByIsin(div.isin);
+            if (byIsin?.matched && byIsin.asset.ticker) {
+              ticker = byIsin.asset.ticker;
+              resolvedName = byIsin.asset.name;
+            } else {
+              resolvedName = byIsin?.matched ? byIsin.asset.name : null;
+              const suggestion = await suggestTicker(div.isin, true);
+              if (suggestion) {
+                ticker = suggestion.ticker;
+                resolvedName = resolvedName ?? suggestion.name;
+                suggested = true;
+              }
+            }
+          }
+
+          if (!ticker && div.assetName) {
+            const resolution = resolveAssetName(div.assetName);
+            if (resolution.matched && resolution.asset.ticker) {
+              ticker = resolution.asset.ticker;
+              resolvedName = resolution.asset.name;
+            } else if (resolution.matched && resolution.asset.isin) {
+              const suggestion = await suggestTicker(resolution.asset.isin, true);
+              ticker = suggestion?.ticker ?? null;
+              resolvedName = resolution.asset.name;
+              suggested = true;
+            } else {
+              const suggestion = await suggestTicker(div.assetName, false);
+              ticker = suggestion?.ticker ?? null;
+              resolvedName = suggestion?.name ?? null;
+              suggested = suggestion !== null;
+            }
+          }
+
+          const duplicate = ticker ? seenDivKeys.has(dividendDuplicateKey(ticker, div.amount, div.date)) : false;
+          if (ticker && !duplicate) seenDivKeys.add(dividendDuplicateKey(ticker, div.amount, div.date));
+
+          return {
+            date: div.date.toISOString(),
+            label: div.label,
+            assetName: div.assetName,
+            isin: div.isin,
+            ticker,
+            resolvedName,
+            amount: div.amount,
+            suggested,
+            duplicate,
+          };
+        })
+      );
     } catch (err) {
       result.status = "error";
       result.message = err instanceof Error ? err.message : "Erreur inconnue lors du parsing";

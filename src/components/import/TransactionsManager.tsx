@@ -10,6 +10,7 @@ type TransactionRow = {
   price: number;
   fees: number;
   note: string | null;
+  status: "PROJECTED" | "CONFIRMED";
   sourceDocument: string | null;
   accountName: string;
   assetName: string;
@@ -125,6 +126,9 @@ export function TransactionsManager() {
         price: parseFloat(editValues.price),
         fees: parseFloat(editValues.fees || "0"),
         date: editValues.date,
+        // Modifier une ligne (notamment une projection DCA, pour y mettre le
+        // prix/quantité réel) vaut validation — elle passe en CONFIRMED.
+        status: "CONFIRMED",
       }),
     });
     setEditingId(null);
@@ -221,7 +225,17 @@ export function TransactionsManager() {
                 <td className="px-3 py-2 text-[var(--fg2)]">{r.accountName}</td>
                 <td className="px-2 py-2">
                   <div className="flex flex-col leading-[1.2]">
-                    <span className="font-semibold text-[var(--fg)]">{r.assetName}</span>
+                    <div className="flex items-center gap-[6px]">
+                      <span className="font-semibold text-[var(--fg)]">{r.assetName}</span>
+                      {r.status === "PROJECTED" && (
+                        <span
+                          className="rounded-[5px] px-[6px] py-[1px] text-[10px] font-semibold uppercase"
+                          style={{ background: "var(--accent2)", color: "#fff", opacity: 0.85 }}
+                        >
+                          Projection DCA
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[11px] text-[var(--fg3)]">{r.assetTicker}{r.sourceDocument ? " · PDF" : ""}</span>
                   </div>
                 </td>
@@ -326,9 +340,13 @@ export function TransactionsManager() {
                           type="button"
                           onClick={() => startEdit(r)}
                           className="rounded-[7px] border px-2 py-1 text-[11px]"
-                          style={{ borderColor: "var(--line)", color: "var(--fg2)" }}
+                          style={
+                            r.status === "PROJECTED"
+                              ? { borderColor: "var(--accent2)", color: "var(--accent2)" }
+                              : { borderColor: "var(--line)", color: "var(--fg2)" }
+                          }
                         >
-                          Modifier
+                          {r.status === "PROJECTED" ? "Confirmer" : "Modifier"}
                         </button>
                         <button
                           type="button"

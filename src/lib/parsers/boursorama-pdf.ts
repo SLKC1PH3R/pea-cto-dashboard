@@ -56,9 +56,25 @@ export type ParsedBoursoramaDeposit = {
   amount: number; // positif = dépôt, négatif = retrait
 };
 
+// Versement de dividende/coupon détecté sur le relevé — non vérifié sur un
+// relevé réel à ce jour (aucun échantillon Boursorama de dividende fourni),
+// calibré par analogie avec les libellés de virement/transaction connus.
+// `assetName` peut rester `null` si la ligne ne permet pas de l'isoler avec
+// confiance : mieux vaut laisser l'utilisateur compléter à la confirmation
+// que de deviner un actif. À vérifier/ajuster sur un vrai relevé de dividende.
+export type ParsedBoursoramaDividend = {
+  date: Date;
+  label: string; // libellé brut détecté (ex: "DIVIDENDE")
+  assetName: string | null;
+  isin: string | null;
+  amount: number; // montant net crédité en EUR
+  sourceText: string;
+};
+
 export type BoursoramaParseResult = {
   transactions: ParsedBoursoramaTransaction[];
   deposits: ParsedBoursoramaDeposit[];
+  dividends: ParsedBoursoramaDividend[];
   accountIban: string | null;
   warnings: string[];
 };
@@ -66,6 +82,10 @@ export type BoursoramaParseResult = {
 const BUY_LABELS = ["ACHAT ETRANGER", "ACHAT COMPTANT"];
 const SELL_LABELS = ["VENTE ETRANGER", "VENTE COMPTANT"];
 const DEPOSIT_LABELS = ["VIR"]; // virements (entrants en général dans ce contexte)
+// Libellés observés chez d'autres courtiers/relevés pour un versement de
+// dividende ou de coupon — à ajuster une fois un vrai relevé Boursorama de
+// dividende disponible (cf. avertissement ci-dessus).
+const DIVIDEND_LABELS = ["DIVIDENDE", "COUPONS", "COUPON", "ARRERAGES", "REMUNERATION ESPECES"];
 
 const DATE_RE = /(\d{2})\/(\d{2})\/(\d{4})/;
 const TIME_RE = /^(\d{2}):(\d{2}):(\d{2})$/;
@@ -357,6 +377,77 @@ function parseDeposits(text: string): ParsedBoursoramaDeposit[] {
   return results;
 }
 
+/**
+ * Détecte les versements de dividende/coupon, par analogie avec les formats
+ * "ACHAT/VENTE" déjà calibrés : date + libellé connu, puis nom de la valeur
+ * sur la même ligne (format tabulaire) ou sur une ligne "Nom de la valeur:"
+ * suivante (format multi-ligne). Non vérifié sur un relevé Boursorama réel —
+ * voir l'avertissement sur `ParsedBoursoramaDividend`.
+ */
+function parseDividends(text: string): ParsedBoursoramaDividend[] {
+  const results: ParsedBoursoramaDividend[] = [];
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const labelPattern = DIVIDEND_LABELS.join("|");
+  const headerRe = new RegExp(`^(\\d{2}/\\d{2}/\\d{4})\\s+(${labelPattern})\\b\\s*(.*)$`, "i");
+
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(headerRe);
+    if (!m) continue;
+
+    const [, dateStr, label, rest] = m;
+    let assetName: string | null = null;
+    const sourceLines = [lines[i]];
+
+    // Format multi-ligne : "Nom de la valeur:" sur une des lignes suivantes.
+    for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+      const next = lines[j];
+      sourceLines.push(next);
+      const nameMatch = next.match(/Nom de la valeur\s*:\s*(.+)/i);
+      if (nameMatch) {
+        assetName = nameMatch[1].trim();
+        break;
+      }
+      if (/^\d{2}\/\d{2}\/\d{4}/.test(next)) break;
+    }
+
+    // Format tabulaire : reste de la ligne d'en-tête = nom de la valeur +
+    // montant, ex: "ISHS COR MSCI WLD 12,34".
+    const restWithoutDates = rest.replace(/\d{2}\/\d{2}\/\d{4}/g, "");
+    const amountMatches = [...restWithoutDates.matchAll(/(\d{1,3}(?:[.\s]\d{3})*,\d{2})/g)];
+    let amountStr = amountMatches.at(-1)?.[1];
+    if (!assetName && amountStr) {
+      const idx = restWithoutDates.lastIndexOf(amountStr);
+      const nameGuess = restWithoutDates.slice(0, idx).trim();
+      assetName = nameGuess.length > 0 ? nameGuess : null;
+    }
+
+    // Repli : amount pas trouvé sur la ligne d'en-tête, cherche sur les 1-2
+    // lignes suivantes (mise en page où le montant est isolé).
+    if (!amountStr) {
+      for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
+        const candidateMatches = [...lines[j].matchAll(/(\d{1,3}(?:[.\s]\d{3})*,\d{2})/g)];
+        if (candidateMatches.length > 0) {
+          amountStr = candidateMatches.at(-1)![1];
+          break;
+        }
+      }
+    }
+
+    if (!amountStr) continue;
+
+    results.push({
+      date: parseFrDate(dateStr),
+      label: label.toUpperCase(),
+      assetName,
+      isin: findIsin(lines, i, i + 4),
+      amount: parseFrAmount(amountStr),
+      sourceText: sourceLines.join(" | "),
+    });
+  }
+
+  return results;
+}
+
 export function parseBoursoramaStatement(text: string): BoursoramaParseResult {
   const warnings: string[] = [];
 
@@ -378,6 +469,12 @@ export function parseBoursoramaStatement(text: string): BoursoramaParseResult {
   }
 
   const deposits = parseDeposits(text);
+  const dividends = parseDividends(text);
+  if (dividends.length > 0) {
+    warnings.push(
+      "Des versements de dividende/coupon ont été détectés — ce parsing n'a pas encore été vérifié sur un relevé Boursorama réel : vérifie attentivement l'actif et le montant de chaque ligne avant de confirmer."
+    );
+  }
 
-  return { transactions, deposits, accountIban, warnings };
+  return { transactions, deposits, dividends, accountIban, warnings };
 }

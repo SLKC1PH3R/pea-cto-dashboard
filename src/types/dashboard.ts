@@ -95,7 +95,7 @@ export type PositionMetrics = {
   positionId: string;
   ticker: string;
   name: string;
-  assetType: "ACTION" | "ETF_DISTRIBUANT" | "ETF_CAPITALISANT";
+  assetType: "ACTION" | "ETF_DISTRIBUANT" | "ETF_CAPITALISANT" | "CRYPTO";
   quantity: number;
   averageCostPrice: number;
   currentPrice: number;

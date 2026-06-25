@@ -113,6 +113,8 @@ export interface DashboardData {
   dateLabel: string;
   // ── Portefeuille
   sectors: Sector[];
+  geo: Sector[]; // répartition géographique réelle (Asset.region), par valeur de marché
+  currencies: Sector[]; // exposition devises réelle (Asset.currency), par valeur de marché
   accounts: AccountSummary[];
   // Plus-value réalisée cumulée (positions ouvertes + clôturées) et détail
   // des positions intégralement vendues — l'enveloppe PEA ne plafonne que
