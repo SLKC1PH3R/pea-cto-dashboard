@@ -111,3 +111,80 @@ export async function getPositionsHistoryForDate(userId: string, requestedDate: 
 
   return { date: day, requestedDate, totalValue, rows, minDate, maxDate };
 }
+
+export interface PortfolioValuePoint {
+  date: string;
+  totalValue: number;
+  dayChangeAbs: number;
+  dayChangePct: number;
+}
+
+export interface PortfolioValueSeriesResult {
+  points: PortfolioValuePoint[];
+  minDate: string | null;
+  maxDate: string;
+}
+
+/**
+ * Comme `getPositionsHistoryForDate`, mais pour une plage de jours plutôt
+ * qu'un seul — un point par jour calendaire (valeur totale des positions,
+ * cash exclu, comme `totalValue` ci-dessus). Les historiques de cours sont
+ * récupérés une seule fois pour toute la plage (pas un appel réseau par
+ * jour) : seule la recherche du prix le plus proche est répétée en mémoire,
+ * ce qui reste rapide même sur un an. Un jour sans transaction antérieure ou
+ * sans position ouverte vaut simplement 0.
+ */
+export async function getPortfolioValueSeries(userId: string, fromDate: string, toDate: string): Promise<PortfolioValueSeriesResult> {
+  const accounts = await prisma.account.findMany({
+    where: { userId },
+    include: { positions: { include: { asset: true, transactions: true } } },
+  });
+  const allPositions = accounts.flatMap((a) => a.positions);
+
+  const allTxDates = allPositions.flatMap((p) => p.transactions.map((t) => t.date));
+  const minDate = allTxDates.length > 0 ? allTxDates.reduce((min, d) => (d < min ? d : min)).toISOString().slice(0, 10) : null;
+  const maxDate = new Date().toISOString().slice(0, 10);
+
+  const from = fromDate < maxDate ? fromDate : maxDate;
+  const to = toDate < maxDate ? toDate : maxDate;
+
+  const tickers = [...new Set(allPositions.map((p) => p.asset.ticker))];
+  const histories = tickers.length > 0 ? await getYahooDailyHistories(tickers) : {};
+
+  const days: string[] = [];
+  const cursor = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T00:00:00.000Z`);
+  while (cursor <= end) {
+    days.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  const points: PortfolioValuePoint[] = [];
+  let prevValue: number | null = null;
+
+  for (const day of days) {
+    const cutoff = new Date(`${day}T23:59:59.999Z`);
+    let totalValue = 0;
+
+    for (const position of allPositions) {
+      const txs = position.transactions
+        .filter((t) => t.date <= cutoff)
+        .map((t) => ({ type: t.type, quantity: t.quantity, price: t.price, fees: t.fees, date: t.date }));
+      if (txs.length === 0) continue;
+
+      const qty = currentQuantity(txs);
+      if (qty <= 0) continue;
+
+      const history = histories[position.asset.ticker];
+      const price = (history && nearestDailyPrice(history, day)) ?? averageCostPrice(txs);
+      totalValue += qty * price;
+    }
+
+    const dayChangeAbs = prevValue !== null ? totalValue - prevValue : 0;
+    const dayChangePct = prevValue && prevValue > 0 ? (totalValue / prevValue - 1) * 100 : 0;
+    points.push({ date: day, totalValue, dayChangeAbs, dayChangePct });
+    prevValue = totalValue;
+  }
+
+  return { points, minDate, maxDate };
+}

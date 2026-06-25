@@ -1,40 +1,33 @@
 /**
  * Parser pour l'export CSV "Transactions" de Trade Republic.
  *
- * ⚠️ Calibré sur la description du format fournie (pas sur un fichier réel
- * inspecté ligne à ligne dans cette conversation) : colonnes flexibles
- * détectées par nom (insensible à la casse/aux accents), valeurs de `type`
- * reprises telles que décrites : BUY, SELL, DEPOSIT, INTEREST,
- * CARD_TRANSACTION, IPO. Si le parsing échoue ou produit des lignes vides,
- * `warnings` le signale — partage la ligne d'en-tête (sans les montants) du
- * vrai export pour ajuster les noms de colonnes acceptés ci-dessous.
+ * Calibré sur un vrai export (en-tête réel) :
+ *   datetime, date, account_type, category, type, asset_class, name,
+ *   symbol, shares, price, amount, fee, tax, currency, original_amount,
+ *   original_currency, fx_rate, description
  *
- * Lignes ignorées pour le portefeuille (aucun impact sur les positions,
- * mais comptées dans les warnings pour rester visible) :
- * - INTEREST (intérêts versés sur les liquidités / fonds monétaires)
- * - CARD_TRANSACTION (dépenses carte, hors portefeuille)
- *
- * Lignes DEPOSIT alimentent les versements de compte (`Deposit`) ; BUY/SELL
- * et IPO (assimilé à un BUY/SELL selon le signe du montant) alimentent les
- * transactions sur position. `transaction_id` (UUID Trade Republic) sert de
- * clé d'idempotence — réimporter le même export ne doit rien dupliquer (la
- * vérification se fait côté route, contre `Transaction.externalRef`).
+ * Toutes les lignes sont retournées avec leur `type` brut (pas de filtre ici)
+ * — c'est `/api/import/trade-republic/route.ts` qui décide quoi faire de
+ * chaque type (achat/vente, dépôt, frais, ou ignoré) : la liste des valeurs
+ * de `type` rencontrées dans un relevé réel est longue (CUSTOMER_INPAYMENT,
+ * CARD_ORDERING_FEE, CUSTOMER_INBOUND, INTEREST_PAYMENT, TRANSFER_INBOUND,
+ * TRANSFER_INSTANT_INBOUND, IPO_SUBSCRIPTION, BUY, SELL, CARD_TRANSACTION...)
+ * et continuera de s'enrichir — préférable de centraliser la classification
+ * côté route plutôt que de la dupliquer ici.
  */
-
-export type TrCsvType = "BUY" | "SELL" | "DEPOSIT" | "INTEREST" | "CARD_TRANSACTION" | "IPO";
 
 export type ParsedTrCsvRow = {
   transactionId: string;
   date: Date;
-  type: TrCsvType;
-  isin: string | null; // ISIN réel, ou identifiant interne TR pour les cryptos (ex: XF000BTC0017)
-  assetName: string;
-  quantity: number | null;
+  type: string; // valeur brute de la colonne `type`, en majuscules
+  isin: string | null; // colonne `symbol` — ISIN réel ou pseudo-ISIN crypto (ex: XF000BTC0017)
+  assetName: string; // colonne `name`
+  quantity: number | null; // colonne `shares`, signée (négative en cas de vente) — à passer en abs() côté appelant
   price: number | null;
-  amount: number; // montant net du mouvement, signé (négatif = sortie de cash)
-  fee: number;
-  isSavingsPlan: boolean;
-  note: string;
+  amount: number; // colonne `amount`, signée ; si absente mais shares+price connus, dérivée de shares*price
+  fee: number; // toujours positive (magnitude)
+  isSavingsPlan: boolean; // détecté sur `description` ("Savings plan execution ...")
+  note: string; // colonne `description`
 };
 
 export type TradeRepublicCsvParseResult = {
@@ -42,17 +35,22 @@ export type TradeRepublicCsvParseResult = {
   warnings: string[];
 };
 
+// Ordonnés du plus fiable au moins fiable — le premier candidat trouvé dans
+// l'en-tête gagne, même s'il n'est pas en première position dans le fichier.
+// Crucial pour `date` : la colonne `datetime` (ISO, sans ambiguïté) doit
+// primer sur `date` (JJ/MM/AAAA — `new Date()` la lirait en MM/JJ/AAAA et
+// produirait des dates fausses ou invalides selon le jour).
 const HEADER_CANDIDATES: Record<string, string[]> = {
   transactionId: ["transaction_id", "transactionid", "id", "reference", "ref"],
-  date: ["date", "timestamp", "datum", "execution_date", "booking_date"],
+  date: ["datetime", "timestamp", "date", "datum", "execution_date", "booking_date"],
   type: ["type", "typ"],
-  isin: ["isin", "instrument_isin", "instrument_id", "asset_id"],
-  assetName: ["title", "name", "asset_name", "description", "beschreibung", "instrument_name"],
+  isin: ["symbol", "isin", "instrument_isin", "instrument_id", "asset_id"],
+  assetName: ["name", "title", "asset_name", "beschreibung", "instrument_name"],
   quantity: ["shares", "quantity", "anzahl", "nb_shares", "amount_shares"],
   price: ["price", "price_per_share", "preis", "execution_price", "share_price"],
   amount: ["amount", "total", "betrag", "gesamtbetrag", "net_amount"],
   fee: ["fee", "fees", "gebuehr", "commission"],
-  savingsPlan: ["is_savings_plan", "savings_plan", "sparplan", "execution_type", "order_type"],
+  note: ["description", "note", "comment"],
 };
 
 function normalizeHeader(h: string): string {
@@ -62,35 +60,6 @@ function normalizeHeader(h: string): string {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9_]/g, "_");
-}
-
-function splitCsvLine(line: string): string[] {
-  // Gère les champs entre guillemets contenant des virgules (ex: noms d'actif).
-  const fields: string[] = [];
-  let cur = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (inQuotes) {
-      if (c === '"' && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else if (c === '"') {
-        inQuotes = false;
-      } else {
-        cur += c;
-      }
-    } else if (c === '"') {
-      inQuotes = true;
-    } else if (c === "," || c === ";") {
-      fields.push(cur);
-      cur = "";
-    } else {
-      cur += c;
-    }
-  }
-  fields.push(cur);
-  return fields.map((f) => f.trim());
 }
 
 function parseNumber(s: string | undefined): number | null {
@@ -103,6 +72,14 @@ function parseNumber(s: string | undefined): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
+function findHeaderIndex(headerFields: string[], candidates: string[]): number | undefined {
+  for (const cand of candidates) {
+    const idx = headerFields.indexOf(cand);
+    if (idx >= 0) return idx;
+  }
+  return undefined;
+}
+
 export function parseTradeRepublicCsv(text: string): TradeRepublicCsvParseResult {
   const warnings: string[] = [];
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
@@ -110,67 +87,73 @@ export function parseTradeRepublicCsv(text: string): TradeRepublicCsvParseResult
     return { rows: [], warnings: ["Fichier vide ou sans ligne de données."] };
   }
 
-  const headerFields = splitCsvLine(lines[0]).map(normalizeHeader);
+  // Détecte le séparateur (tabulation pour l'export réel observé, virgule sinon).
+  const delimiter = lines[0].includes("\t") ? "\t" : ",";
+  const headerFields = lines[0].split(delimiter).map(normalizeHeader);
   const colIndex: Record<string, number> = {};
   for (const [field, candidates] of Object.entries(HEADER_CANDIDATES)) {
-    const idx = headerFields.findIndex((h) => candidates.includes(h));
-    if (idx >= 0) colIndex[field] = idx;
+    const idx = findHeaderIndex(headerFields, candidates);
+    if (idx !== undefined) colIndex[field] = idx;
   }
 
-  if (colIndex.date === undefined || colIndex.type === undefined || colIndex.amount === undefined) {
+  if (colIndex.date === undefined || colIndex.type === undefined) {
     warnings.push(
-      `Colonnes essentielles non reconnues (date/type/montant) dans l'en-tête : "${lines[0]}". Partage cette ligne d'en-tête pour ajuster le parser.`
+      `Colonnes essentielles non reconnues (date/type) dans l'en-tête : "${lines[0]}". Partage cette ligne d'en-tête pour ajuster le parser.`
     );
     return { rows: [], warnings };
   }
 
   const rows: ParsedTrCsvRow[] = [];
-  let skippedTypes = 0;
+  let unparsedDates = 0;
 
   for (let i = 1; i < lines.length; i++) {
-    const fields = splitCsvLine(lines[i]);
+    const fields = lines[i].split(delimiter).map((f) => f.trim());
     const get = (key: string) => (colIndex[key] !== undefined ? fields[colIndex[key]] : undefined);
 
     const dateStr = get("date");
     const typeStr = get("type")?.toUpperCase();
-    const amount = parseNumber(get("amount"));
-
-    if (!dateStr || !typeStr || amount === null) continue;
+    if (!dateStr || !typeStr) continue;
 
     const date = new Date(dateStr);
-    if (Number.isNaN(date.getTime())) continue;
-
-    const validTypes: TrCsvType[] = ["BUY", "SELL", "DEPOSIT", "INTEREST", "CARD_TRANSACTION", "IPO"];
-    if (!validTypes.includes(typeStr as TrCsvType)) {
-      skippedTypes++;
+    if (Number.isNaN(date.getTime())) {
+      unparsedDates++;
       continue;
     }
 
-    const savingsPlanRaw = get("savingsPlan")?.toLowerCase() ?? "";
-    const noteRaw = get("assetName") ?? "";
-    const isSavingsPlan =
-      ["true", "1", "yes", "savings_plan"].includes(savingsPlanRaw) || /sparplan|savings plan|plan d.investissement/i.test(noteRaw);
+    const shares = parseNumber(get("quantity"));
+    const price = parseNumber(get("price"));
+    let amount = parseNumber(get("amount"));
+    // Certaines lignes d'ordre manuel (ex: achat suite à souscription IPO)
+    // n'ont pas de colonne `amount` renseignée alors que shares+price le
+    // sont — on la dérive plutôt que de perdre la ligne.
+    if (amount === null && shares !== null && price !== null) {
+      amount = shares * price;
+    }
+    if (amount === null) amount = 0;
+
+    const noteRaw = get("note") ?? "";
+    const isSavingsPlan = /savings plan|sparplan|plan d.investissement/i.test(noteRaw);
 
     rows.push({
-      transactionId: get("transactionId") ?? `${dateStr}-${i}`,
+      transactionId: get("transactionId") || `${dateStr}-${i}`,
       date,
-      type: typeStr as TrCsvType,
+      type: typeStr,
       isin: get("isin")?.toUpperCase() || null,
-      assetName: noteRaw || typeStr,
-      quantity: parseNumber(get("quantity")),
-      price: parseNumber(get("price")),
+      assetName: get("assetName") || typeStr,
+      quantity: shares,
+      price,
       amount,
-      fee: parseNumber(get("fee")) ?? 0,
+      fee: Math.abs(parseNumber(get("fee")) ?? 0),
       isSavingsPlan,
       note: noteRaw,
     });
   }
 
   if (rows.length === 0) {
-    warnings.push("Aucune ligne exploitable détectée — vérifie le format des colonnes date/type/montant.");
+    warnings.push("Aucune ligne exploitable détectée — vérifie le format des colonnes date/type.");
   }
-  if (skippedTypes > 0) {
-    warnings.push(`${skippedTypes} ligne(s) avec un type non reconnu ignorée(s).`);
+  if (unparsedDates > 0) {
+    warnings.push(`${unparsedDates} ligne(s) avec une date illisible ignorée(s).`);
   }
 
   return { rows, warnings };

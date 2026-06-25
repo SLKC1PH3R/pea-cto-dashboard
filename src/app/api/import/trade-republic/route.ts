@@ -9,16 +9,40 @@ import { findReconcilableProjected } from "@/lib/dca-reconcile";
  * Import du CSV "Transactions" Trade Republic — flux différent de
  * /api/import/boursorama : pas d'étape d'aperçu/confirmation séparée, écrit
  * directement en base. Acceptable ici parce que (a) les lignes du CSV
- * portent déjà des valeurs réelles confirmées par Trade Republic (pas une
- * extraction PDF approximative à vérifier), et (b) l'import est idempotent
- * via `transaction_id` (stocké dans `Transaction.externalRef`, et dans le
- * `note` des dépôts) — réimporter le même fichier ne duplique rien, donc
- * aucune perte possible à corriger après coup.
+ * portent déjà des valeurs réelles confirmées par Trade Republic, et (b)
+ * l'import est idempotent via `transaction_id` (stocké dans
+ * `Transaction.externalRef`, et dans le `note` des dépôts/frais) —
+ * réimporter le même fichier ne duplique rien.
+ *
+ * Calibré sur un vrai export (en-tête `datetime,date,account_type,category,
+ * type,asset_class,name,symbol,shares,price,amount,fee,tax,currency,
+ * original_amount,original_currency,fx_rate,description`). Classification
+ * des valeurs de `type` observées :
+ * - BUY / SELL : ordre réel sur position (le seul cas où la quantité
+ *   compte) — la quantité Trade Republic est signée (négative en vente),
+ *   on n'en garde que la magnitude.
+ * - CUSTOMER_INPAYMENT, CUSTOMER_INBOUND, TRANSFER_INBOUND,
+ *   TRANSFER_INSTANT_INBOUND : versement de cash → `Deposit`.
+ * - CARD_ORDERING_FEE : frais pur (pas de mouvement de cash côté `amount`,
+ *   juste un `fee`) → `Fee` (type AUTRE).
+ * - INTEREST_PAYMENT, CARD_TRANSACTION, IPO_SUBSCRIPTION : ignorés pour le
+ *   portefeuille. IPO_SUBSCRIPTION représente une réservation de cash
+ *   provisoire (puis son remboursement partiel) en amont d'un ordre IPO —
+ *   l'achat réel apparaît séparément comme une ligne BUY normale, donc
+ *   compter aussi la réservation ferait doublonner le cash sorti.
+ * - Toute autre valeur : signalée en warning (`type non reconnu`) plutôt
+ *   que silencieusement ignorée, pour rester visible si Trade Republic
+ *   introduit un nouveau type.
  *
  * Le compte "Trade Republic" est trouvé ou créé automatiquement (un seul
- * compte CTO par utilisateur pour ce courtier ; pas de support multi-compte
- * Trade Republic pour l'instant).
+ * compte CTO par utilisateur pour ce courtier).
  */
+
+const DEPOSIT_TYPES = new Set(["CUSTOMER_INPAYMENT", "CUSTOMER_INBOUND", "TRANSFER_INBOUND", "TRANSFER_INSTANT_INBOUND"]);
+const FEE_ONLY_TYPES = new Set(["CARD_ORDERING_FEE"]);
+const SKIPPED_TYPES = new Set(["INTEREST_PAYMENT", "CARD_TRANSACTION", "IPO_SUBSCRIPTION"]);
+const TRADE_TYPES = new Set(["BUY", "SELL"]);
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
@@ -35,7 +59,7 @@ export async function POST(req: NextRequest) {
   const { rows, warnings } = parseTradeRepublicCsv(text);
 
   if (rows.length === 0) {
-    return NextResponse.json({ transactionsCreated: 0, depositsCreated: 0, skipped: 0, warnings, errors: [] });
+    return NextResponse.json({ transactionsCreated: 0, depositsCreated: 0, feesCreated: 0, skipped: 0, warnings, errors: [] });
   }
 
   let account = await prisma.account.findFirst({ where: { userId: session.user.id, broker: "TRADE_REPUBLIC" } });
@@ -55,11 +79,15 @@ export async function POST(req: NextRequest) {
   const existingDeposits = await prisma.deposit.findMany({ where: { accountId }, select: { note: true } });
   const seenDepositRefs = new Set(existingDeposits.map((d) => d.note).filter((n): n is string => !!n));
 
+  const existingFees = await prisma.fee.findMany({ where: { accountId }, select: { note: true } });
+  const seenFeeRefs = new Set(existingFees.map((f) => f.note).filter((n): n is string => !!n));
+
   let transactionsCreated = 0;
   let depositsCreated = 0;
+  let feesCreated = 0;
   let skipped = 0;
-  let interestSkipped = 0;
-  let cardSkipped = 0;
+  const skippedByType = new Map<string, number>();
+  const unrecognizedTypes = new Map<string, number>();
   const errors: string[] = [];
 
   async function resolveAsset(row: ParsedTrCsvRow) {
@@ -95,17 +123,33 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  async function createFee(row: ParsedTrCsvRow, amount: number) {
+    const feeRef = `Importé Trade Republic — id:${row.transactionId}`;
+    if (seenFeeRefs.has(feeRef)) return;
+    await prisma.fee.create({ data: { accountId, type: "AUTRE", amount, date: row.date, note: feeRef } });
+    seenFeeRefs.add(feeRef);
+    feesCreated++;
+  }
+
   for (const row of rows) {
-    if (row.type === "INTEREST") {
-      interestSkipped++;
-      continue;
-    }
-    if (row.type === "CARD_TRANSACTION") {
-      cardSkipped++;
+    if (SKIPPED_TYPES.has(row.type)) {
+      skippedByType.set(row.type, (skippedByType.get(row.type) ?? 0) + 1);
       continue;
     }
 
-    if (row.type === "DEPOSIT") {
+    if (FEE_ONLY_TYPES.has(row.type)) {
+      const amount = row.fee || Math.abs(row.amount);
+      if (amount > 0) {
+        try {
+          await createFee(row, amount);
+        } catch (err) {
+          errors.push(`Frais ${row.transactionId} : ${err instanceof Error ? err.message : "erreur lors de la création"}`);
+        }
+      }
+      continue;
+    }
+
+    if (DEPOSIT_TYPES.has(row.type)) {
       const depositRef = `Importé Trade Republic — id:${row.transactionId}`;
       if (seenDepositRefs.has(depositRef)) {
         skipped++;
@@ -115,27 +159,32 @@ export async function POST(req: NextRequest) {
         await prisma.deposit.create({ data: { accountId, amount: row.amount, date: row.date, note: depositRef } });
         seenDepositRefs.add(depositRef);
         depositsCreated++;
+        if (row.fee > 0) await createFee(row, row.fee);
       } catch (err) {
         errors.push(`Dépôt ${row.transactionId} : ${err instanceof Error ? err.message : "erreur lors de la création"}`);
       }
       continue;
     }
 
-    // BUY / SELL / IPO — IPO est traité comme un achat ou une vente selon le
-    // signe du montant (un IPO se solde par un débit à l'achat, un crédit au
-    // remboursement/à la revente).
+    if (!TRADE_TYPES.has(row.type)) {
+      unrecognizedTypes.set(row.type, (unrecognizedTypes.get(row.type) ?? 0) + 1);
+      continue;
+    }
+
     if (seenRefs.has(row.transactionId)) {
       skipped++;
       continue;
     }
 
-    const txType: "BUY" | "SELL" = row.type === "SELL" || (row.type === "IPO" && row.amount > 0) ? "SELL" : "BUY";
-    const quantity = row.quantity ?? (row.price ? Math.abs(row.amount) / row.price : null);
+    const txType: "BUY" | "SELL" = row.type === "SELL" ? "SELL" : "BUY";
+    // Trade Republic signe la quantité (négative côté vente) — seule la
+    // magnitude nous intéresse, le sens vient de `txType`.
+    const quantity = row.quantity !== null ? Math.abs(row.quantity) : row.price ? Math.abs(row.amount) / row.price : null;
     if (!quantity || quantity <= 0) {
       errors.push(`${row.assetName} (${row.transactionId}) : quantité indéterminable, ligne ignorée`);
       continue;
     }
-    const unitPrice = row.price ?? Math.abs(row.amount) / quantity;
+    const unitPrice = row.price ? Math.abs(row.price) : Math.abs(row.amount) / quantity;
 
     try {
       const asset = await resolveAsset(row);
@@ -158,7 +207,7 @@ export async function POST(req: NextRequest) {
             date: row.date,
             externalRef: row.transactionId,
             isSavingsPlan: row.isSavingsPlan,
-            note: `Projection DCA confirmée depuis l'export Trade Republic`,
+            note: "Projection DCA confirmée depuis l'export Trade Republic",
           },
         });
       } else {
@@ -173,7 +222,7 @@ export async function POST(req: NextRequest) {
             date: row.date,
             externalRef: row.transactionId,
             isSavingsPlan: row.isSavingsPlan,
-            note: row.type === "IPO" ? `Import Trade Republic — IPO (${row.assetName})` : "Import Trade Republic",
+            note: "Import Trade Republic",
           },
         });
       }
@@ -186,9 +235,13 @@ export async function POST(req: NextRequest) {
   }
 
   const allWarnings = [...warnings];
-  if (interestSkipped > 0) allWarnings.push(`${interestSkipped} ligne(s) INTEREST ignorée(s) (hors portefeuille).`);
-  if (cardSkipped > 0) allWarnings.push(`${cardSkipped} ligne(s) CARD_TRANSACTION ignorée(s) (hors portefeuille).`);
+  for (const [type, count] of skippedByType) {
+    allWarnings.push(`${count} ligne(s) ${type} ignorée(s) (hors portefeuille).`);
+  }
+  for (const [type, count] of unrecognizedTypes) {
+    allWarnings.push(`${count} ligne(s) de type "${type}" non reconnu — ignorée(s), signale-le pour l'ajouter.`);
+  }
   if (skipped > 0) allWarnings.push(`${skipped} ligne(s) déjà importée(s) (transaction_id déjà connu) ignorée(s).`);
 
-  return NextResponse.json({ transactionsCreated, depositsCreated, skipped, warnings: allWarnings, errors });
+  return NextResponse.json({ transactionsCreated, depositsCreated, feesCreated, skipped, warnings: allWarnings, errors });
 }

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 type ImportResult = {
   transactionsCreated: number;
   depositsCreated: number;
+  feesCreated: number;
   skipped: number;
   warnings: string[];
   errors: string[];
@@ -106,7 +107,7 @@ export function TRCsvImport() {
       {result && (
         <div className="flex flex-col gap-2 rounded-lg border p-3 text-[12.5px]" style={{ borderColor: "var(--line)", background: "var(--panel2)" }}>
           <p style={{ color: "var(--pos)" }}>
-            {result.transactionsCreated} transaction(s) et {result.depositsCreated} dépôt(s) importés
+            {result.transactionsCreated} transaction(s), {result.depositsCreated} dépôt(s) et {result.feesCreated} frais importés
             {result.skipped > 0 ? ` (${result.skipped} déjà connus, ignorés)` : ""}.
           </p>
           {result.warnings.map((w, i) => (
