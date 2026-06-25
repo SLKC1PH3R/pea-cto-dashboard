@@ -56,7 +56,11 @@ export async function getQuotes(symbols: string[]): Promise<Record<string, Finnh
 
   const out: Record<string, FinnhubQuote> = {};
   for (const [symbol, quote] of results) {
-    if (quote) out[symbol] = quote;
+    // Finnhub renvoie un 200 avec tous les champs à 0 pour un symbole non
+    // couvert par le plan gratuit (ex: cryptos) plutôt qu'une erreur — un
+    // prix à 0 n'est jamais un cours réel valide, on le traite comme une
+    // absence de donnée pour laisser le repli Yahoo/tradingview prendre le relais.
+    if (quote && quote.c > 0) out[symbol] = quote;
   }
   return out;
 }
