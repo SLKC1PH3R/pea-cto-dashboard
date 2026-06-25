@@ -87,8 +87,10 @@ export function parseTradeRepublicCsv(text: string): TradeRepublicCsvParseResult
     return { rows: [], warnings: ["Fichier vide ou sans ligne de données."] };
   }
 
-  // Détecte le séparateur (tabulation pour l'export réel observé, virgule sinon).
-  const delimiter = lines[0].includes("\t") ? "\t" : ",";
+  // Détecte le séparateur — observé en tabulation, virgule, et point-virgule
+  // selon la version/locale de l'export ; on prend celui qui découpe le plus
+  // de colonnes sur la ligne d'en-tête.
+  const delimiter = ([",", ";", "\t"] as const).reduce((best, d) => (lines[0].split(d).length > lines[0].split(best).length ? d : best), ",");
   const headerFields = lines[0].split(delimiter).map(normalizeHeader);
   const colIndex: Record<string, number> = {};
   for (const [field, candidates] of Object.entries(HEADER_CANDIDATES)) {
