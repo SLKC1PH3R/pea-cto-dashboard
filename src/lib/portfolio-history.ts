@@ -29,6 +29,7 @@ const ASSET_TYPE_LABEL: Record<string, string> = {
   ACTION: "Actions",
   ETF_DISTRIBUANT: "ETF",
   ETF_CAPITALISANT: "ETF",
+  CRYPTO: "Cryptomonnaies",
 };
 
 /**

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { parseTradeRepublicCsv, type ParsedTrCsvRow } from "@/lib/parsers/trade-republic-csv";
 import { resolveAssetByIsin, resolveAssetName } from "@/lib/parsers/asset-mapping";
+import { resolveAssetWithCustom, logUnknownAsset } from "@/lib/asset-resolution";
 import { findReconcilableProjected } from "@/lib/dca-reconcile";
 
 /**
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
+  const userId = session.user.id;
 
   const formData = await req.formData();
   const file = formData.get("file");
@@ -62,10 +64,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ transactionsCreated: 0, depositsCreated: 0, feesCreated: 0, skipped: 0, warnings, errors: [] });
   }
 
-  let account = await prisma.account.findFirst({ where: { userId: session.user.id, broker: "TRADE_REPUBLIC" } });
+  let account = await prisma.account.findFirst({ where: { userId, broker: "TRADE_REPUBLIC" } });
   if (!account) {
     account = await prisma.account.create({
-      data: { userId: session.user.id, name: "Trade Republic", type: "CTO", broker: "TRADE_REPUBLIC" },
+      data: { userId, name: "Trade Republic", type: "CTO", broker: "TRADE_REPUBLIC" },
     });
   }
   const accountId = account.id;
@@ -93,7 +95,7 @@ export async function POST(req: NextRequest) {
   async function resolveAsset(row: ParsedTrCsvRow) {
     const byIsin = row.isin ? resolveAssetByIsin(row.isin) : null;
     const byName = !byIsin?.matched ? resolveAssetName(row.assetName) : null;
-    const known = byIsin?.matched ? byIsin.asset : byName?.matched ? byName.asset : null;
+    const known = byIsin?.matched ? byIsin.asset : byName?.matched ? byName.asset : await resolveAssetWithCustom(userId, row.assetName, row.isin);
 
     if (known?.ticker) {
       return prisma.asset.upsert({
@@ -112,9 +114,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Actif non reconnu : on utilise l'ISIN (ou un identifiant dérivé du nom)
-    // comme ticker de repli — le cours ne sera pas automatiquement coté, mais
-    // rien n'est jamais bloqué ni fabriqué (cf. resolvePrice, replie sur le PRU).
+    // Actif non reconnu (ni table statique, ni mapping personnalisé) : on
+    // journalise pour la page "Actifs non reconnus", et on utilise l'ISIN
+    // (ou un identifiant dérivé du nom) comme ticker de repli — le cours ne
+    // sera pas automatiquement coté, mais rien n'est jamais bloqué ni
+    // fabriqué (cf. resolvePrice, replie sur le PRU).
+    await logUnknownAsset(userId, row.assetName, row.isin);
     const fallbackTicker = row.isin ?? row.assetName.toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 30);
     return prisma.asset.upsert({
       where: { ticker: fallbackTicker },

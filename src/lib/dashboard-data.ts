@@ -24,6 +24,7 @@ const ASSET_TYPE_LABEL: Record<string, string> = {
   ACTION: "Actions",
   ETF_DISTRIBUANT: "ETF",
   ETF_CAPITALISANT: "ETF",
+  CRYPTO: "Cryptomonnaies",
 };
 
 const ALLOC_COLORS = ["#a78bfa", "#c9b6fb", "#6ea8c9", "#c9a978", "#5fb89a"];

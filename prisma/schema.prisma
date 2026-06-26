@@ -32,6 +32,47 @@ model User {
   dashboardLayouts DashboardLayout[]
   dcaRules        DcaRule[]
   watchlistItems  WatchlistItem[]
+  unknownAssets   UnknownAsset[]
+  customAssetMappings CustomAssetMapping[]
+}
+
+// ============================================================
+// ENRICHISSEMENT DE asset-mapping.ts (table statique) — quand un import
+// (Boursorama/Trade Republic) ne reconnaît pas un nom d'actif, on le
+// journalise ici plutôt que de le perdre dans un warning éphémère.
+// L'utilisateur peut ensuite le mapper une fois pour toutes via
+// `CustomAssetMapping`, qui complète la table statique pour les imports
+// suivants — sans avoir besoin d'un déploiement de code.
+// ============================================================
+
+model UnknownAsset {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rawName     String // nom brut tel qu'extrait du relevé (Boursorama/Trade Republic)
+  isin        String?
+  occurrences Int      @default(1)
+  lastSeenAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, rawName])
+}
+
+model CustomAssetMapping {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rawName   String // fragment du nom brut (match "contains", insensible à la casse)
+  ticker    String
+  isin      String?
+  name      String
+  assetType AssetType @default(ACTION)
+  sector    String?
+  region    String?
+  currency  String    @default("EUR")
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, rawName])
 }
 
 // ============================================================

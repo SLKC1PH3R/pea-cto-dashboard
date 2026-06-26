@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { parseBoursoramaStatement } from "@/lib/parsers/boursorama-pdf";
 import { resolveAssetName, resolveAssetByIsin } from "@/lib/parsers/asset-mapping";
+import { resolveAssetWithCustom, logUnknownAsset } from "@/lib/asset-resolution";
 import { findTradingViewSymbolByIsin, findTradingViewSymbolByName, toDisplayTicker } from "@/lib/tradingview-quote";
 import { txHeuristicKey, txHeuristicKeyVariants, txReferenceKey, depositDuplicateKey, dividendDuplicateKey } from "@/lib/parsers/duplicate-key";
 import { PDFParse } from "pdf-parse";
@@ -231,8 +232,16 @@ export async function POST(req: NextRequest) {
             return { ...base, ticker: suggestion?.ticker ?? null, resolvedName: resolution.asset.name, suggested: true };
           }
 
+          // 2.5) Mapping personnalisé (saisi par l'utilisateur via la page
+          // "Actifs non reconnus") — étend la table statique sans déploiement.
+          const custom = await resolveAssetWithCustom(session.user.id, tx.assetName, tx.isin);
+          if (custom?.ticker) {
+            return { ...base, ticker: custom.ticker, resolvedName: custom.name, suggested: false };
+          }
+
           // 3) Dernier recours : recherche tradingview.com sur le nom brut.
           const suggestion = await suggestTicker(tx.assetName, false);
+          if (!suggestion) await logUnknownAsset(session.user.id, tx.assetName, tx.isin);
           return {
             ...base,
             ticker: suggestion?.ticker ?? null,
@@ -289,10 +298,17 @@ export async function POST(req: NextRequest) {
               resolvedName = resolution.asset.name;
               suggested = true;
             } else {
-              const suggestion = await suggestTicker(div.assetName, false);
-              ticker = suggestion?.ticker ?? null;
-              resolvedName = suggestion?.name ?? null;
-              suggested = suggestion !== null;
+              const custom = await resolveAssetWithCustom(session.user.id, div.assetName, div.isin);
+              if (custom?.ticker) {
+                ticker = custom.ticker;
+                resolvedName = custom.name;
+              } else {
+                const suggestion = await suggestTicker(div.assetName, false);
+                if (!suggestion) await logUnknownAsset(session.user.id, div.assetName, div.isin);
+                ticker = suggestion?.ticker ?? null;
+                resolvedName = suggestion?.name ?? null;
+                suggested = suggestion !== null;
+              }
             }
           }
 

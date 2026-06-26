@@ -39,6 +39,7 @@ import { HistoryView } from "@/components/dashboard/HistoryView";
 import { AccountManager } from "@/components/import/AccountManager";
 import { ImportDropzone } from "@/components/import/ImportDropzone";
 import { TRCsvImport } from "@/components/import/TRCsvImport";
+import { AssetMappingManager } from "@/components/import/AssetMappingManager";
 import { PerformanceCsvImport } from "@/components/import/PerformanceCsvImport";
 import { ManualTransactionForm } from "@/components/import/ManualTransactionForm";
 import { DcaRuleForm } from "@/components/import/DcaRuleForm";
@@ -1222,11 +1223,15 @@ export function AtelierDashboard({
               )}
             </div>
 
-            <div className="col-span-6">
+            <div className="col-span-6 flex flex-col gap-[18px]">
               <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
                 <h2 className="mb-1 text-[17px] font-bold text-[var(--fg)]">Transactions enregistrées</h2>
                 <p className="mb-4 text-[12.5px] text-[var(--fg2)]">Modifie ou supprime une ligne en cas d&apos;erreur d&apos;import ou de saisie</p>
                 <TransactionsManager />
+              </section>
+
+              <section className="rounded-[22px] border p-6" style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}>
+                <AssetMappingManager />
               </section>
             </div>
           </div>
